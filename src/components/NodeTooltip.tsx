@@ -1,5 +1,6 @@
 import { useRef, useLayoutEffect, useState } from 'react';
-import { SlimNode } from '../types';
+import { SlimNode, AirflowDagInfo } from '../types';
+import { DbtIcon, AirflowIcon } from './Icons';
 
 interface NodeTooltipProps {
   node: SlimNode;
@@ -7,6 +8,7 @@ interface NodeTooltipProps {
   y: number;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
+  airflowDags?: AirflowDagInfo[] | null;
 }
 
 const MAX_COLUMNS = 12;
@@ -79,7 +81,7 @@ function ExternalLinkIcon() {
   );
 }
 
-export function NodeTooltip({ node, x, y, onMouseEnter, onMouseLeave }: NodeTooltipProps) {
+export function NodeTooltip({ node, x, y, onMouseEnter, onMouseLeave, airflowDags }: NodeTooltipProps) {
   const isSource = node.resource_type === 'source';
   const columns = node.columns || [];
   const [columnsExpanded, setColumnsExpanded] = useState(false);
@@ -126,8 +128,9 @@ export function NodeTooltip({ node, x, y, onMouseEnter, onMouseLeave }: NodeTool
             ? 'bg-green-50 dark:bg-green-900/30'
             : 'bg-blue-50 dark:bg-blue-900/30'
         }`}>
-          <div className="font-semibold text-gray-900 dark:text-gray-100 break-words leading-snug">
-            {node.name}
+          <div className="font-semibold text-gray-900 dark:text-gray-100 leading-snug flex items-start gap-1.5">
+            {!isSource && <DbtIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+            <span className="min-w-0 break-all">{node.name}</span>
           </div>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
@@ -227,6 +230,33 @@ export function NodeTooltip({ node, x, y, onMouseEnter, onMouseLeave }: NodeTool
                   >
                     {tag}
                   </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Airflow DAGs */}
+          {airflowDags && airflowDags.length > 0 && (
+            <div>
+              <div className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-0.5">
+                Airflow DAGs ({airflowDags.length})
+              </div>
+              <div className="space-y-1">
+                {airflowDags.map((dag, i) => (
+                  <div
+                    key={`${dag.dagFile}-${i}`}
+                    className="flex items-start gap-1.5 text-[11px]"
+                  >
+                    <AirflowIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-800 dark:text-gray-200 break-all">
+                        {dag.dagFile.replace(/\.py$/, '')}
+                      </div>
+                      <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono break-all">
+                        {dag.selector}
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

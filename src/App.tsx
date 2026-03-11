@@ -7,9 +7,80 @@ import { SearchResults, MatchResult, buildSnippets } from './components/SearchRe
 import { SettingsModal } from './components/SettingsModal';
 import { hydrateManifest } from './utils/manifest';
 import { buildGraphData, getFilteredNodeIds } from './utils/graph';
-import { ParsedManifest, FilterState, Settings, LoadingProgress } from './types';
+import { ParsedManifest, FilterState, Settings, LoadingProgress, AirflowDagMap } from './types';
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
+
+const AIRFLOW_STEP_ORDER = ['scanning', 'extracting', 'resolving', 'done'];
+const AIRFLOW_STEP_LABELS: Record<string, string> = {
+  scanning: 'Scanning DAG files',
+  extracting: 'Extracting selectors',
+  resolving: 'Resolving models',
+  done: 'Complete',
+};
+
+function AirflowScanBanner({ progress }: { progress: LoadingProgress | null }) {
+  const currentIdx = progress ? AIRFLOW_STEP_ORDER.indexOf(progress.step) : 0;
+  const percent = Math.min(((currentIdx + 1) / AIRFLOW_STEP_ORDER.length) * 100, 100);
+
+  return (
+    <div className="absolute bottom-4 right-4 z-40 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+      <div className="px-3 py-2.5">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="text-xs font-medium text-gray-800 dark:text-gray-200">
+            Scanning Airflow DAGs
+          </span>
+        </div>
+
+        {/* Step indicators */}
+        <div className="space-y-1 mb-2">
+          {AIRFLOW_STEP_ORDER.map((step, stepIdx) => {
+            const isDone = stepIdx < currentIdx || progress?.step === 'done';
+            const isCurrent = stepIdx === currentIdx && progress?.step !== 'done';
+            return (
+              <div key={step} className="flex items-center gap-1.5 text-[11px]">
+                <div className={`w-3 h-3 rounded-full flex items-center justify-center shrink-0 ${
+                  isDone
+                    ? 'bg-green-500 text-white'
+                    : isCurrent
+                    ? 'bg-orange-500 text-white animate-pulse'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
+                }`}>
+                  {isDone ? (
+                    <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <span className="text-[7px] font-bold">{stepIdx + 1}</span>
+                  )}
+                </div>
+                <span className={
+                  isCurrent ? 'text-gray-900 dark:text-gray-100 font-medium' : isDone ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-600'
+                }>
+                  {AIRFLOW_STEP_LABELS[step]}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Progress bar */}
+        <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-1.5">
+          <div
+            className="h-full bg-orange-500 rounded-full transition-all duration-500"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+
+        {/* Detail text */}
+        <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+          {progress?.detail || 'Initializing...'}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 const STEP_LABELS: Record<string, string> = {
   reading: 'Reading file',
@@ -23,7 +94,7 @@ const STEP_LABELS: Record<string, string> = {
 const STEP_ORDER = ['reading', 'parsing', 'extracting', 'mapping', 'finalizing', 'done'];
 
 export default function App() {
-  const [settings, setSettings] = useState<Settings>({ projectPath: '', theme: 'light' });
+  const [settings, setSettings] = useState<Settings>({ projectPath: '', airflowDagsPath: '', theme: 'light' });
   const [manifest, setManifest] = useState<ParsedManifest | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     selectedModel: null,
@@ -39,6 +110,11 @@ export default function App() {
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [activeResultNodeId, setActiveResultNodeId] = useState<string | null>(null);
 
+  // Airflow DAG state
+  const [airflowDagMap, setAirflowDagMap] = useState<AirflowDagMap | null>(null);
+  const [airflowScanning, setAirflowScanning] = useState(false);
+  const [airflowProgress, setAirflowProgress] = useState<LoadingProgress | null>(null);
+
   // Listen for progress events from main process
   useEffect(() => {
     if (!isElectron) return;
@@ -48,12 +124,21 @@ export default function App() {
     return cleanup;
   }, []);
 
+  // Listen for airflow progress events
+  useEffect(() => {
+    if (!isElectron) return;
+    const cleanup = window.electronAPI.onAirflowProgress((data) => {
+      setAirflowProgress(data);
+    });
+    return cleanup;
+  }, []);
+
   // Load settings on mount
   useEffect(() => {
     if (isElectron) {
       window.electronAPI.getSettings().then((s) => {
         setSettings(s);
-        if (s.projectPath) loadManifest(s.projectPath);
+        if (s.projectPath) loadManifest(s.projectPath, s.airflowDagsPath);
       });
     }
   }, []);
@@ -63,7 +148,26 @@ export default function App() {
     document.documentElement.classList.toggle('dark', settings.theme === 'dark');
   }, [settings.theme]);
 
-  const loadManifest = useCallback(async (projectPath: string) => {
+  const scanAirflowDags = useCallback(async (dagsPath: string, projectPath: string) => {
+    if (!isElectron || !dagsPath || !projectPath) return;
+    setAirflowScanning(true);
+    setAirflowProgress(null);
+    try {
+      const result = await window.electronAPI.scanAirflowDags(dagsPath, projectPath);
+      if (result.success && result.data) {
+        setAirflowDagMap(result.data);
+      } else {
+        console.error('Airflow scan error:', result.error);
+      }
+    } catch (err: any) {
+      console.error('Airflow scan failed:', err.message);
+    } finally {
+      setAirflowScanning(false);
+      setAirflowProgress(null);
+    }
+  }, []);
+
+  const loadManifest = useCallback(async (projectPath: string, airflowDagsPath?: string) => {
     setLoading(true);
     setError(null);
     setProgress(null);
@@ -75,6 +179,11 @@ export default function App() {
           // Small delay so the progress UI renders before hydration blocks the main thread
           await new Promise((r) => setTimeout(r, 50));
           setManifest(hydrateManifest(result.data));
+          // After manifest is loaded, scan Airflow DAGs if path is set
+          const dagsPath = airflowDagsPath ?? settings.airflowDagsPath;
+          if (dagsPath) {
+            scanAirflowDags(dagsPath, projectPath);
+          }
         } else {
           setError(result.error || 'Failed to read manifest.json');
         }
@@ -85,7 +194,7 @@ export default function App() {
       setLoading(false);
       setProgress(null);
     }
-  }, []);
+  }, [scanAirflowDags, settings.airflowDagsPath]);
 
   const handleChangeSettings = useCallback(async (partial: Partial<Settings>) => {
     const newSettings = { ...settings, ...partial };
@@ -103,6 +212,20 @@ export default function App() {
       loadManifest(dir);
     }
   }, [handleChangeSettings, loadManifest]);
+
+  const handleSelectAirflowDagsDirectory = useCallback(async () => {
+    if (!isElectron || !settings.projectPath) return;
+    const dir = await window.electronAPI.selectDirectory();
+    if (dir) {
+      await handleChangeSettings({ airflowDagsPath: dir });
+      scanAirflowDags(dir, settings.projectPath);
+    }
+  }, [handleChangeSettings, scanAirflowDags, settings.projectPath]);
+
+  const handleClearAirflowDags = useCallback(async () => {
+    setAirflowDagMap(null);
+    await handleChangeSettings({ airflowDagsPath: '' });
+  }, [handleChangeSettings]);
 
   // Compute which visible node IDs match the keyword in their raw_code
   const { filteredIds, highlightedIds } = useMemo(() => {
@@ -145,6 +268,8 @@ export default function App() {
   const progressPercent = progress
     ? Math.min(((STEP_ORDER.indexOf(progress.step) + 1) / STEP_ORDER.length) * 100, 100)
     : 0;
+
+  const airflowDagCount = airflowDagMap ? Object.keys(airflowDagMap).length : null;
 
   return (
     <div className="h-screen w-screen flex bg-gray-50 dark:bg-gray-950">
@@ -276,6 +401,7 @@ export default function App() {
                   onFocusHandled={() => setFocusNodeId(null)}
                   onNodeClick={(nodeId) => setActiveResultNodeId(nodeId)}
                   manifest={manifest}
+                  airflowDagMap={airflowDagMap}
                 />
               </ReactFlowProvider>
             </div>
@@ -292,6 +418,11 @@ export default function App() {
             )}
           </div>
         )}
+
+        {/* Airflow DAG scanning progress banner */}
+        {airflowScanning && (
+          <AirflowScanBanner progress={airflowProgress} />
+        )}
       </div>
 
       <SettingsModal
@@ -300,6 +431,10 @@ export default function App() {
         settings={settings}
         onChangeSettings={handleChangeSettings}
         onSelectDirectory={handleSelectDirectory}
+        onSelectAirflowDagsDirectory={handleSelectAirflowDagsDirectory}
+        onClearAirflowDags={handleClearAirflowDags}
+        airflowDagCount={airflowDagCount}
+        airflowScanning={airflowScanning}
       />
     </div>
   );

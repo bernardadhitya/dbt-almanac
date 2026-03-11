@@ -6,6 +6,7 @@ import Store from 'electron-store';
 const store = new Store({
   defaults: {
     projectPath: '',
+    airflowDagsPath: '',
     theme: 'light' as 'light' | 'dark',
   },
 });
@@ -48,12 +49,12 @@ function sendProgress(step: string, detail: string) {
   }
 }
 
-// Resolve the Python script path (works in both dev and packaged)
-function getParserScriptPath(): string {
+// Resolve Python script paths (works in both dev and packaged)
+function getScriptPath(scriptName: string): string {
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'scripts', 'parse_manifest.py');
+    return path.join(process.resourcesPath, 'scripts', scriptName);
   }
-  return path.join(__dirname, '..', 'scripts', 'parse_manifest.py');
+  return path.join(__dirname, '..', 'scripts', scriptName);
 }
 
 // IPC Handlers
@@ -68,7 +69,7 @@ ipcMain.handle('select-directory', async () => {
 
 ipcMain.handle('read-manifest', async (_event, projectPath: string) => {
   const manifestPath = path.join(projectPath, 'target', 'manifest.json');
-  const scriptPath = getParserScriptPath();
+  const scriptPath = getScriptPath('parse_manifest.py');
 
   return new Promise((resolve) => {
     sendProgress('reading', 'Starting Python parser...');
@@ -129,15 +130,82 @@ ipcMain.handle('read-manifest', async (_event, projectPath: string) => {
   });
 });
 
+ipcMain.handle('scan-airflow-dags', async (_event, dagsPath: string, projectPath: string) => {
+  const manifestPath = path.join(projectPath, 'target', 'manifest.json');
+  const scriptPath = getScriptPath('scan_airflow_dags.py');
+
+  return new Promise((resolve) => {
+    const sendAirflowProgress = (step: string, detail: string) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('airflow-progress', { step, detail });
+      }
+    };
+
+    sendAirflowProgress('scanning', 'Starting Airflow DAG scanner...');
+
+    const proc = spawn('python3', [scriptPath, dagsPath, manifestPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const stdoutChunks: Buffer[] = [];
+    let stderrBuffer = '';
+
+    proc.stderr.on('data', (chunk: Buffer) => {
+      stderrBuffer += chunk.toString();
+      const lines = stderrBuffer.split('\n');
+      stderrBuffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const msg = JSON.parse(line);
+          if (msg.step && msg.detail) {
+            sendAirflowProgress(msg.step, msg.detail);
+          }
+        } catch {
+          // ignore non-JSON lines
+        }
+      }
+    });
+
+    proc.stdout.on('data', (chunk: Buffer) => {
+      stdoutChunks.push(chunk);
+    });
+
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        resolve({ success: false, error: `Airflow scanner exited with code ${code}` });
+        return;
+      }
+      try {
+        const output = Buffer.concat(stdoutChunks).toString('utf-8');
+        const data = JSON.parse(output);
+        if (data.error) {
+          resolve({ success: false, error: data.error });
+        } else {
+          resolve({ success: true, data });
+        }
+      } catch (err: any) {
+        resolve({ success: false, error: `Failed to parse scanner output: ${err.message}` });
+      }
+    });
+
+    proc.on('error', (err) => {
+      resolve({ success: false, error: `Failed to start Python: ${err.message}` });
+    });
+  });
+});
+
 ipcMain.handle('get-settings', () => {
   return {
     projectPath: store.get('projectPath'),
+    airflowDagsPath: store.get('airflowDagsPath'),
     theme: store.get('theme'),
   };
 });
 
-ipcMain.handle('set-settings', (_event, settings: { projectPath?: string; theme?: string }) => {
+ipcMain.handle('set-settings', (_event, settings: { projectPath?: string; airflowDagsPath?: string; theme?: string }) => {
   if (settings.projectPath !== undefined) store.set('projectPath', settings.projectPath);
+  if (settings.airflowDagsPath !== undefined) store.set('airflowDagsPath', settings.airflowDagsPath);
   if (settings.theme !== undefined) store.set('theme', settings.theme);
   return true;
 });

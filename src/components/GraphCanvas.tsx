@@ -15,7 +15,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { ModelNode } from './ModelNode';
 import { NodeTooltip } from './NodeTooltip';
-import { ParsedManifest } from '../types';
+import { ParsedManifest, AirflowDagMap } from '../types';
 
 const nodeTypes = { model: ModelNode };
 
@@ -32,9 +32,10 @@ interface GraphCanvasProps {
   onFocusHandled?: () => void;
   onNodeClick?: (nodeId: string) => void;
   manifest?: ParsedManifest | null;
+  airflowDagMap?: AirflowDagMap | null;
 }
 
-function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel, focusNodeId, onFocusHandled, onNodeClick, manifest }: GraphCanvasProps) {
+function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel, focusNodeId, onFocusHandled, onNodeClick, manifest, airflowDagMap }: GraphCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(inputNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(inputEdges);
   const { fitView, setCenter } = useReactFlow();
@@ -177,6 +178,7 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
   }, [clearAllTimers]);
 
   const hoveredSlimNode = tooltip && manifest ? manifest.allNodes.get(tooltip.nodeId) : null;
+  const hoveredAirflowDags = tooltip && airflowDagMap ? airflowDagMap[tooltip.nodeId] || null : null;
 
   const defaultEdgeOptions = {
     type: 'default' as const,  // bezier curves — loose, flowing arrows
@@ -223,6 +225,7 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
           y={tooltip.y}
           onMouseEnter={handleTooltipMouseEnter}
           onMouseLeave={handleTooltipMouseLeave}
+          airflowDags={hoveredAirflowDags}
         />,
         document.body
       )}
