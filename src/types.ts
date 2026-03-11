@@ -51,8 +51,17 @@ export interface FilterState {
 
 export interface Settings {
   projectPath: string;
+  airflowDagsPath: string;
   theme: 'light' | 'dark';
 }
+
+export interface AirflowDagInfo {
+  dagFile: string;
+  selector: string;
+}
+
+/** Mapping from model unique_id to list of Airflow DAGs that invoke it */
+export type AirflowDagMap = Record<string, AirflowDagInfo[]>;
 
 export interface LoadingProgress {
   step: string;
@@ -64,9 +73,11 @@ declare global {
     electronAPI: {
       selectDirectory: () => Promise<string | null>;
       readManifest: (projectPath: string) => Promise<{ success: boolean; data?: PreProcessedManifest; error?: string }>;
+      scanAirflowDags: (dagsPath: string, projectPath: string) => Promise<{ success: boolean; data?: AirflowDagMap; error?: string }>;
       getSettings: () => Promise<Settings>;
       setSettings: (settings: Partial<Settings>) => Promise<boolean>;
       onManifestProgress: (callback: (data: LoadingProgress) => void) => () => void;
+      onAirflowProgress: (callback: (data: LoadingProgress) => void) => () => void;
     };
   }
 }
