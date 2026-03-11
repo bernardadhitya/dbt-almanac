@@ -1,6 +1,6 @@
 import Dagre from '@dagrejs/dagre';
 import { type Node, type Edge, MarkerType } from '@xyflow/react';
-import { ParsedManifest, FilterState } from '../types';
+import { ParsedManifest, FilterState, AirflowDagMap } from '../types';
 
 export function getFilteredNodeIds(
   manifest: ParsedManifest,
@@ -155,4 +155,99 @@ function layoutGraph(
   });
 
   return { nodes: layoutedNodes, edges };
+}
+
+// ── DAG group containers ──────────────────────────────────────────────
+
+const GROUP_PADDING_X = 24;
+const GROUP_PADDING_TOP = 28;   // extra room for the label row
+const GROUP_PADDING_BOTTOM = 16;
+
+/**
+ * Build translucent container nodes that group visible nodes sharing common
+ * Airflow DAGs.  Each container is per-unique-set-of-nodes: if DAG A and
+ * DAG B both cover the exact same visible nodes, they merge into one
+ * container labelled with both names.  Intensity (opacity) rises with
+ * the number of shared DAGs.
+ */
+export function buildDagGroupNodes(
+  positionedNodes: Node[],
+  airflowDagMap: AirflowDagMap,
+): Node[] {
+  const visibleIds = new Set(positionedNodes.map((n) => n.id));
+
+  // 1. Build dagFile → Set<visibleNodeId>
+  const dagToNodes = new Map<string, Set<string>>();
+  for (const [nodeId, dags] of Object.entries(airflowDagMap)) {
+    if (!visibleIds.has(nodeId)) continue;
+    for (const dag of dags) {
+      let s = dagToNodes.get(dag.dagFile);
+      if (!s) { s = new Set(); dagToNodes.set(dag.dagFile, s); }
+      s.add(nodeId);
+    }
+  }
+
+  // 2. Group DAGs that cover the exact same set of visible nodes
+  //    key = sorted node IDs joined → { dagFiles[], nodeIds }
+  const nodeSetKey = (ids: Set<string>) => Array.from(ids).sort().join('\0');
+  const groups = new Map<string, { nodeIds: Set<string>; dagFiles: string[] }>();
+
+  for (const [dagFile, nodeIds] of dagToNodes) {
+    if (nodeIds.size < 2) continue;                 // only group 2+ nodes
+    const key = nodeSetKey(nodeIds);
+    let g = groups.get(key);
+    if (!g) { g = { nodeIds, dagFiles: [] }; groups.set(key, g); }
+    g.dagFiles.push(dagFile.replace(/\.py$/, ''));
+  }
+
+  if (groups.size === 0) return [];
+
+  // Pre-index positioned nodes for fast lookup
+  const nodeById = new Map<string, Node>();
+  for (const n of positionedNodes) nodeById.set(n.id, n);
+
+  // 3. For each merged group compute bounding box & create a container node
+  const maxDagCount = Math.max(...Array.from(groups.values()).map((g) => g.dagFiles.length));
+  const result: Node[] = [];
+
+  let idx = 0;
+  for (const { nodeIds, dagFiles } of groups.values()) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    for (const nid of nodeIds) {
+      const node = nodeById.get(nid);
+      if (!node) continue;
+      const w = estimateNodeWidth((node.data as any).label || '');
+      const x = node.position.x;
+      const y = node.position.y;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x + w > maxX) maxX = x + w;
+      if (y + NODE_HEIGHT > maxY) maxY = y + NODE_HEIGHT;
+    }
+
+    if (minX === Infinity) continue;
+
+    const width  = (maxX - minX) + GROUP_PADDING_X * 2;
+    const height = (maxY - minY) + GROUP_PADDING_TOP + GROUP_PADDING_BOTTOM;
+
+    // Intensity: 0 = 1 DAG, 1 = maxDagCount DAGs
+    const intensity = maxDagCount > 1
+      ? (dagFiles.length - 1) / (maxDagCount - 1)
+      : 0;
+
+    result.push({
+      id: `dag-group-${idx++}`,
+      type: 'dagGroup',
+      position: { x: minX - GROUP_PADDING_X, y: minY - GROUP_PADDING_TOP },
+      data: { dagFiles, width, height, intensity },
+      selectable: false,
+      draggable: false,
+      connectable: false,
+      zIndex: -10,
+      style: { pointerEvents: 'none' as const },
+    });
+  }
+
+  return result;
 }

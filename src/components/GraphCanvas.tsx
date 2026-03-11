@@ -14,10 +14,11 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { ModelNode } from './ModelNode';
+import { DagGroupNode } from './DagGroupNode';
 import { NodeTooltip } from './NodeTooltip';
 import { ParsedManifest, AirflowDagMap } from '../types';
 
-const nodeTypes = { model: ModelNode };
+const nodeTypes = { model: ModelNode, dagGroup: DagGroupNode };
 
 /** Grace period (ms) when moving cursor between node and tooltip */
 const DISMISS_DELAY = 200;

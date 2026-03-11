@@ -6,7 +6,7 @@ import { KeywordSearch } from './components/KeywordSearch';
 import { SearchResults, MatchResult, buildSnippets } from './components/SearchResults';
 import { SettingsModal } from './components/SettingsModal';
 import { hydrateManifest } from './utils/manifest';
-import { buildGraphData, getFilteredNodeIds } from './utils/graph';
+import { buildGraphData, getFilteredNodeIds, buildDagGroupNodes } from './utils/graph';
 import { ParsedManifest, FilterState, Settings, LoadingProgress, AirflowDagMap } from './types';
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
@@ -114,6 +114,7 @@ export default function App() {
   const [airflowDagMap, setAirflowDagMap] = useState<AirflowDagMap | null>(null);
   const [airflowScanning, setAirflowScanning] = useState(false);
   const [airflowProgress, setAirflowProgress] = useState<LoadingProgress | null>(null);
+  const [showDagGroups, setShowDagGroups] = useState(false);
 
   // Listen for progress events from main process
   useEffect(() => {
@@ -262,8 +263,16 @@ export default function App() {
 
   const { nodes, edges } = useMemo(() => {
     if (!manifest) return { nodes: [], edges: [] };
-    return buildGraphData(manifest, filteredIds, filters.selectedModel, highlightedIds);
-  }, [manifest, filteredIds, filters.selectedModel, highlightedIds]);
+    const graph = buildGraphData(manifest, filteredIds, filters.selectedModel, highlightedIds);
+
+    // Append DAG group container nodes when the toggle is on
+    if (showDagGroups && airflowDagMap) {
+      const groupNodes = buildDagGroupNodes(graph.nodes, airflowDagMap);
+      return { nodes: [...groupNodes, ...graph.nodes], edges: graph.edges };
+    }
+
+    return graph;
+  }, [manifest, filteredIds, filters.selectedModel, highlightedIds, showDagGroups, airflowDagMap]);
 
   const progressPercent = progress
     ? Math.min(((STEP_ORDER.indexOf(progress.step) + 1) / STEP_ORDER.length) * 100, 100)
@@ -277,9 +286,12 @@ export default function App() {
         modelNames={manifest?.modelNames || []}
         filters={filters}
         onFiltersChange={setFilters}
-        nodeCount={nodes.length}
+        nodeCount={nodes.filter((n) => n.type !== 'dagGroup').length}
         edgeCount={edges.length}
         onOpenSettings={() => setSettingsOpen(true)}
+        hasAirflowDags={!!airflowDagMap}
+        showDagGroups={showDagGroups}
+        onShowDagGroupsChange={setShowDagGroups}
       />
 
       <div className="flex-1 relative">
@@ -390,7 +402,7 @@ export default function App() {
                 keyword={keyword}
                 onKeywordChange={setKeyword}
                 matchCount={highlightedIds.size}
-                totalVisible={nodes.filter((n) => !(n.data as any).isSource).length}
+                totalVisible={nodes.filter((n) => n.type === 'model' && !(n.data as any).isSource).length}
               />
               <ReactFlowProvider>
                 <GraphCanvas
