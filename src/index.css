@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.app-drag {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* React Flow overrides for dark mode */
+.dark .react-flow__edge-path {
+  stroke: #4b5563;
+}
+
+.dark .react-flow__minimap {
+  background: #1f2937;
+}
