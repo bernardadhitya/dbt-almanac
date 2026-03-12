@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
+  MarkerType,
   useEdgesState,
   useReactFlow,
   applyNodeChanges,
@@ -37,9 +38,10 @@ interface GraphCanvasProps {
   manifest?: ParsedManifest | null;
   airflowDagMap?: AirflowDagMap | null;
   showDagGroups?: boolean;
+  edgeAnimations?: boolean;
 }
 
-function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel, focusNodeId, onFocusHandled, onNodeClick, manifest, airflowDagMap, showDagGroups }: GraphCanvasProps) {
+function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel, focusNodeId, onFocusHandled, onNodeClick, manifest, airflowDagMap, showDagGroups, edgeAnimations = true }: GraphCanvasProps) {
   // All nodes (model/source + dagGroup containers) live in one state.
   // DagGroup nodes are recomputed from model positions on every position change
   // so containers follow dragged nodes in real-time.
@@ -50,6 +52,9 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
 
   // Tooltip state: the visible tooltip's node ID + anchored position
   const [tooltip, setTooltip] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+
+  // Hovered node for edge highlighting (set instantly, cleared with tooltip dismiss)
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
   // Refs for hover timing
   const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -70,6 +75,55 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
   useEffect(() => {
     setEdges(inputEdges);
   }, [inputEdges, setEdges]);
+
+  // Compute styled edges: highlight connected edges on hover, dim the rest.
+  // Gated by the edgeAnimations setting — when off, edges pass through unchanged.
+  const styledEdges = useMemo(() => {
+    if (!edgeAnimations || !hoveredNodeId) return edges;
+
+    return edges.map((edge) => {
+      const isConnected =
+        edge.source === hoveredNodeId || edge.target === hoveredNodeId;
+
+      if (isConnected) {
+        return {
+          ...edge,
+          animated: true,
+          style: {
+            stroke: '#3b82f6',
+            strokeWidth: 2.5,
+            filter:
+              'drop-shadow(0 0 3px rgba(59,130,246,0.55)) drop-shadow(0 0 7px rgba(59,130,246,0.3))',
+            transition: 'stroke 0.2s ease, stroke-width 0.2s ease',
+          },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 12,
+            height: 12,
+            color: '#3b82f6',
+          },
+        };
+      }
+
+      // Dim non-connected edges so highlighted ones stand out
+      return {
+        ...edge,
+        style: {
+          stroke: '#d1d5db',
+          strokeWidth: 1,
+          opacity: 0.35,
+          transition:
+            'stroke 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease',
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 12,
+          height: 12,
+          color: '#d1d5db',
+        },
+      };
+    });
+  }, [edges, hoveredNodeId, edgeAnimations]);
 
   // Custom onNodesChange handler:
   // - When a dagGroup container is dragged, move all its member nodes by the same delta
@@ -170,6 +224,7 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     dismissTimerRef.current = setTimeout(() => {
       setTooltip(null);
+      setHoveredNodeId(null);
       dismissTimerRef.current = null;
     }, DISMISS_DELAY);
   }, []);
@@ -182,8 +237,14 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
   }, []);
 
   const handleNodeMouseEnter = useCallback((event: React.MouseEvent, node: Node) => {
+    // Skip dagGroup nodes — only highlight real model/source nodes
+    if (node.type === 'dagGroup') return;
+
     // Cancel any pending dismiss (e.g. re-entering same node from tooltip)
     cancelDismiss();
+
+    // Highlight edges immediately (only when animations are enabled)
+    if (edgeAnimations) setHoveredNodeId(node.id);
 
     // If tooltip is already showing for this node, keep it
     if (tooltip?.nodeId === node.id) return;
@@ -202,16 +263,19 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
       }
       showTimerRef.current = null;
     }, SHOW_DELAY);
-  }, [cancelDismiss, tooltip?.nodeId]);
+  }, [cancelDismiss, tooltip?.nodeId, edgeAnimations]);
 
   const handleNodeMouseLeave = useCallback(() => {
     // Cancel any pending show
     if (showTimerRef.current) { clearTimeout(showTimerRef.current); showTimerRef.current = null; }
     pendingNodeRef.current = null;
 
-    // Schedule dismiss with grace period (cursor might be moving to tooltip)
     if (tooltip) {
+      // Tooltip is showing — use grace period (edges stay highlighted until dismiss)
       scheduleDismiss();
+    } else {
+      // No tooltip yet — clear edge highlighting immediately
+      setHoveredNodeId(null);
     }
   }, [tooltip, scheduleDismiss]);
 
@@ -225,10 +289,11 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
     scheduleDismiss();
   }, [scheduleDismiss]);
 
-  // Clear tooltip on panning/zooming
+  // Clear tooltip + edge highlighting on panning/zooming
   const handleMoveStart = useCallback(() => {
     clearAllTimers();
     setTooltip(null);
+    setHoveredNodeId(null);
   }, [clearAllTimers]);
 
   // Cleanup timers on unmount
@@ -248,7 +313,7 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
     <>
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={styledEdges}
         onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}

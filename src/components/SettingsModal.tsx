@@ -113,6 +113,36 @@ export function SettingsModal({
           )}
         </div>
 
+        {/* Edge Animations Toggle */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Edge Animations on Hover
+          </label>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            Highlight and animate connected edges when hovering a node. Disable if you experience lag.
+          </p>
+          <div className="flex items-center gap-3">
+            <span className={`text-sm ${!settings.edgeAnimations ? 'text-gray-900 dark:text-gray-100 font-medium' : 'text-gray-400'}`}>
+              Off
+            </span>
+            <button
+              onClick={() => onChangeSettings({ edgeAnimations: !settings.edgeAnimations })}
+              className={`relative w-12 h-6 rounded-full transition-colors ${
+                settings.edgeAnimations ? 'bg-blue-600' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                  settings.edgeAnimations ? 'translate-x-6' : 'translate-x-0'
+                }`}
+              />
+            </button>
+            <span className={`text-sm ${settings.edgeAnimations ? 'text-gray-900 dark:text-gray-100 font-medium' : 'text-gray-400'}`}>
+              On
+            </span>
+          </div>
+        </div>
+
         {/* Theme Toggle */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

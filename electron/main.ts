@@ -8,6 +8,7 @@ const store = new Store({
     projectPath: '',
     airflowDagsPath: '',
     theme: 'light' as 'light' | 'dark',
+    edgeAnimations: true,
   },
 });
 
@@ -200,12 +201,14 @@ ipcMain.handle('get-settings', () => {
     projectPath: store.get('projectPath'),
     airflowDagsPath: store.get('airflowDagsPath'),
     theme: store.get('theme'),
+    edgeAnimations: store.get('edgeAnimations'),
   };
 });
 
-ipcMain.handle('set-settings', (_event, settings: { projectPath?: string; airflowDagsPath?: string; theme?: string }) => {
+ipcMain.handle('set-settings', (_event, settings: { projectPath?: string; airflowDagsPath?: string; theme?: string; edgeAnimations?: boolean }) => {
   if (settings.projectPath !== undefined) store.set('projectPath', settings.projectPath);
   if (settings.airflowDagsPath !== undefined) store.set('airflowDagsPath', settings.airflowDagsPath);
   if (settings.theme !== undefined) store.set('theme', settings.theme);
+  if (settings.edgeAnimations !== undefined) store.set('edgeAnimations', settings.edgeAnimations);
   return true;
 });
