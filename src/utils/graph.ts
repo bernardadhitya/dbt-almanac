@@ -63,7 +63,8 @@ export function buildGraphData(
   manifest: ParsedManifest,
   filteredIds: Set<string> | null,
   selectedModelName: string | null,
-  highlightedIds?: Set<string>
+  highlightedIds?: Set<string>,
+  airflowDagMap?: AirflowDagMap | null,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodeIds = filteredIds ?? new Set(manifest.allNodes.keys());
   const nodes: Node[] = [];
@@ -116,6 +117,9 @@ export function buildGraphData(
     }
   }
 
+  if (airflowDagMap) {
+    return layoutGraphWithDagGroups(nodes, edges, airflowDagMap);
+  }
   return layoutGraph(nodes, edges);
 }
 
@@ -143,6 +147,106 @@ function layoutGraph(
   for (const edge of edges) {
     g.setEdge(edge.source, edge.target);
   }
+
+  Dagre.layout(g);
+
+  const layoutedNodes = nodes.map((node) => {
+    const pos = g.node(node.id);
+    return {
+      ...node,
+      position: { x: pos.x - pos.width / 2, y: pos.y - NODE_HEIGHT / 2 },
+    };
+  });
+
+  return { nodes: layoutedNodes, edges };
+}
+
+// ── DAG-aware layout (compound graph) ────────────────────────────────
+
+/**
+ * Compute DAG group clusters from an AirflowDagMap for a set of visible
+ * node IDs.  Returns merged groups (same logic as buildDagGroupNodes)
+ * ready for use as dagre compound-graph parents.
+ */
+function computeDagClusters(
+  visibleIds: Set<string>,
+  airflowDagMap: AirflowDagMap,
+): { nodeIds: Set<string>; dagFiles: string[] }[] {
+  // dagFile → Set<visibleNodeId>
+  const dagToNodes = new Map<string, Set<string>>();
+  for (const [nodeId, dags] of Object.entries(airflowDagMap)) {
+    if (!visibleIds.has(nodeId)) continue;
+    for (const dag of dags) {
+      let s = dagToNodes.get(dag.dagFile);
+      if (!s) { s = new Set(); dagToNodes.set(dag.dagFile, s); }
+      s.add(nodeId);
+    }
+  }
+
+  // Merge DAGs covering the exact same set of visible nodes
+  const nodeSetKey = (ids: Set<string>) => Array.from(ids).sort().join('\0');
+  const groups = new Map<string, { nodeIds: Set<string>; dagFiles: string[] }>();
+
+  for (const [dagFile, nodeIds] of dagToNodes) {
+    if (nodeIds.size < 2) continue;
+    const key = nodeSetKey(nodeIds);
+    let g = groups.get(key);
+    if (!g) { g = { nodeIds, dagFiles: [] }; groups.set(key, g); }
+    g.dagFiles.push(dagFile.replace(/\.py$/, ''));
+  }
+
+  return Array.from(groups.values());
+}
+
+/**
+ * Layout using dagre's compound-graph mode so that nodes sharing a DAG
+ * are clustered together and non-member nodes stay outside the cluster
+ * bounding box.
+ */
+function layoutGraphWithDagGroups(
+  nodes: Node[],
+  edges: Edge[],
+  airflowDagMap: AirflowDagMap,
+): { nodes: Node[]; edges: Edge[] } {
+  if (nodes.length === 0) return { nodes, edges };
+
+  const visibleIds = new Set(nodes.map((n) => n.id));
+  const clusters = computeDagClusters(visibleIds, airflowDagMap);
+
+  // Fall back to regular layout if there are no multi-node clusters
+  if (clusters.length === 0) return layoutGraph(nodes, edges);
+
+  // Create compound graph
+  const g = new Dagre.graphlib.Graph({ compound: true }).setDefaultEdgeLabel(() => ({}));
+  g.setGraph({ rankdir: 'LR', nodesep: 40, ranksep: 80, marginx: 40, marginy: 40 });
+
+  // Add all real nodes
+  for (const node of nodes) {
+    const w = estimateNodeWidth((node.data as any).label);
+    g.setNode(node.id, { width: w, height: NODE_HEIGHT });
+  }
+
+  // Add edges
+  for (const edge of edges) {
+    g.setEdge(edge.source, edge.target);
+  }
+
+  // Sort clusters largest-first so bigger groups win if a node belongs
+  // to multiple clusters (dagre compound allows only one parent).
+  const sorted = [...clusters].sort((a, b) => b.nodeIds.size - a.nodeIds.size);
+  const assigned = new Set<string>();
+
+  sorted.forEach((cluster, idx) => {
+    const clusterId = `__dag_cluster_${idx}`;
+    g.setNode(clusterId, {});
+
+    for (const nid of cluster.nodeIds) {
+      if (!assigned.has(nid)) {
+        g.setParent(nid, clusterId);
+        assigned.add(nid);
+      }
+    }
+  });
 
   Dagre.layout(g);
 

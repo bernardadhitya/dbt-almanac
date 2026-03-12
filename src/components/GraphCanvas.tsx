@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ReactFlow,
@@ -16,6 +16,7 @@ import '@xyflow/react/dist/style.css';
 import { ModelNode } from './ModelNode';
 import { DagGroupNode } from './DagGroupNode';
 import { NodeTooltip } from './NodeTooltip';
+import { buildDagGroupNodes } from '../utils/graph';
 import { ParsedManifest, AirflowDagMap } from '../types';
 
 const nodeTypes = { model: ModelNode, dagGroup: DagGroupNode };
@@ -34,10 +35,12 @@ interface GraphCanvasProps {
   onNodeClick?: (nodeId: string) => void;
   manifest?: ParsedManifest | null;
   airflowDagMap?: AirflowDagMap | null;
+  showDagGroups?: boolean;
 }
 
-function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel, focusNodeId, onFocusHandled, onNodeClick, manifest, airflowDagMap }: GraphCanvasProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState(inputNodes);
+function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel, focusNodeId, onFocusHandled, onNodeClick, manifest, airflowDagMap, showDagGroups }: GraphCanvasProps) {
+  // Only model/source nodes go into state — DAG group containers are computed reactively
+  const [modelNodes, setModelNodes, onModelNodesChange] = useNodesState(inputNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(inputEdges);
   const { fitView, setCenter } = useReactFlow();
   const prevSelectedRef = useRef<string | null>(null);
@@ -50,11 +53,24 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingNodeRef = useRef<string | null>(null); // node waiting to show
 
-  // Update nodes/edges when input changes
+  // Update model nodes/edges when input changes (inputNodes should not contain dagGroup nodes)
   useEffect(() => {
-    setNodes(inputNodes);
+    setModelNodes(inputNodes);
     setEdges(inputEdges);
-  }, [inputNodes, inputEdges, setNodes, setEdges]);
+  }, [inputNodes, inputEdges, setModelNodes, setEdges]);
+
+  // Compute DAG group container nodes from live model node positions
+  // so containers follow nodes when they are dragged.
+  const dagGroupNodes = useMemo(() => {
+    if (!showDagGroups || !airflowDagMap) return [];
+    return buildDagGroupNodes(modelNodes, airflowDagMap);
+  }, [modelNodes, showDagGroups, airflowDagMap]);
+
+  // Merge model nodes + container nodes for rendering
+  const nodes = useMemo(
+    () => [...dagGroupNodes, ...modelNodes],
+    [dagGroupNodes, modelNodes],
+  );
 
   // Fit view on initial load / data change
   useEffect(() => {
@@ -191,7 +207,7 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onNodesChange={onModelNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
         onNodeMouseEnter={handleNodeMouseEnter}
