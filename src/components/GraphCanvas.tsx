@@ -5,19 +5,22 @@ import {
   Background,
   Controls,
   MiniMap,
-  useNodesState,
   useEdgesState,
   useReactFlow,
+  applyNodeChanges,
   type Node,
   type Edge,
+  type NodeChange,
   BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { ModelNode } from './ModelNode';
+import { DagGroupNode } from './DagGroupNode';
 import { NodeTooltip } from './NodeTooltip';
+import { buildDagGroupNodes } from '../utils/graph';
 import { ParsedManifest, AirflowDagMap } from '../types';
 
-const nodeTypes = { model: ModelNode };
+const nodeTypes = { model: ModelNode, dagGroup: DagGroupNode };
 
 /** Grace period (ms) when moving cursor between node and tooltip */
 const DISMISS_DELAY = 200;
@@ -33,10 +36,14 @@ interface GraphCanvasProps {
   onNodeClick?: (nodeId: string) => void;
   manifest?: ParsedManifest | null;
   airflowDagMap?: AirflowDagMap | null;
+  showDagGroups?: boolean;
 }
 
-function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel, focusNodeId, onFocusHandled, onNodeClick, manifest, airflowDagMap }: GraphCanvasProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState(inputNodes);
+function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel, focusNodeId, onFocusHandled, onNodeClick, manifest, airflowDagMap, showDagGroups }: GraphCanvasProps) {
+  // All nodes (model/source + dagGroup containers) live in one state.
+  // DagGroup nodes are recomputed from model positions on every position change
+  // so containers follow dragged nodes in real-time.
+  const [nodes, setNodes] = useState<Node[]>(inputNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(inputEdges);
   const { fitView, setCenter } = useReactFlow();
   const prevSelectedRef = useRef<string | null>(null);
@@ -49,11 +56,63 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingNodeRef = useRef<string | null>(null); // node waiting to show
 
-  // Update nodes/edges when input changes
+  // Sync nodes from parent when input changes (initial layout or model/filter change)
   useEffect(() => {
-    setNodes(inputNodes);
+    if (showDagGroups && airflowDagMap) {
+      const dagGroups = buildDagGroupNodes(inputNodes, airflowDagMap);
+      setNodes([...dagGroups, ...inputNodes]);
+    } else {
+      setNodes(inputNodes);
+    }
+  }, [inputNodes, showDagGroups, airflowDagMap]);
+
+  // Sync edges from parent
+  useEffect(() => {
     setEdges(inputEdges);
-  }, [inputNodes, inputEdges, setNodes, setEdges]);
+  }, [inputEdges, setEdges]);
+
+  // Custom onNodesChange handler:
+  // - When a dagGroup container is dragged, move all its member nodes by the same delta
+  // - After any position change, recompute dagGroup bounding boxes
+  const handleNodesChange = useCallback((changes: NodeChange[]) => {
+    setNodes((prev) => {
+      let next = applyNodeChanges(changes, prev);
+
+      // If a dagGroup is being actively dragged, move its member nodes too
+      for (const change of changes) {
+        if (
+          change.type !== 'position' ||
+          !('dragging' in change && change.dragging) ||
+          !change.id.startsWith('dag-group-')
+        ) continue;
+        if (!('position' in change) || !change.position) continue;
+
+        const prevGroup = prev.find((n) => n.id === change.id);
+        if (!prevGroup) continue;
+
+        const dx = change.position.x - prevGroup.position.x;
+        const dy = change.position.y - prevGroup.position.y;
+        if (dx === 0 && dy === 0) continue;
+
+        const memberIds = new Set<string>((prevGroup.data as any).memberNodeIds || []);
+        next = next.map((n) =>
+          memberIds.has(n.id)
+            ? { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } }
+            : n,
+        );
+      }
+
+      // Recompute dagGroup bounding boxes whenever any node position changes
+      const hasPositionChange = changes.some((c) => c.type === 'position');
+      if (hasPositionChange && showDagGroups && airflowDagMap) {
+        const modelNodes = next.filter((n) => n.type !== 'dagGroup');
+        const newDagGroups = buildDagGroupNodes(modelNodes, airflowDagMap);
+        next = [...newDagGroups, ...modelNodes];
+      }
+
+      return next;
+    });
+  }, [showDagGroups, airflowDagMap]);
 
   // Fit view on initial load / data change
   useEffect(() => {
@@ -190,7 +249,7 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
         onNodeMouseEnter={handleNodeMouseEnter}

@@ -1,6 +1,6 @@
 import Dagre from '@dagrejs/dagre';
 import { type Node, type Edge, MarkerType } from '@xyflow/react';
-import { ParsedManifest, FilterState } from '../types';
+import { ParsedManifest, FilterState, AirflowDagMap } from '../types';
 
 export function getFilteredNodeIds(
   manifest: ParsedManifest,
@@ -63,7 +63,8 @@ export function buildGraphData(
   manifest: ParsedManifest,
   filteredIds: Set<string> | null,
   selectedModelName: string | null,
-  highlightedIds?: Set<string>
+  highlightedIds?: Set<string>,
+  airflowDagMap?: AirflowDagMap | null,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodeIds = filteredIds ?? new Set(manifest.allNodes.keys());
   const nodes: Node[] = [];
@@ -116,6 +117,9 @@ export function buildGraphData(
     }
   }
 
+  if (airflowDagMap) {
+    return layoutGraphWithDagGroups(nodes, edges, airflowDagMap);
+  }
   return layoutGraph(nodes, edges);
 }
 
@@ -155,4 +159,200 @@ function layoutGraph(
   });
 
   return { nodes: layoutedNodes, edges };
+}
+
+// ── DAG-aware layout (compound graph) ────────────────────────────────
+
+/**
+ * Compute DAG group clusters from an AirflowDagMap for a set of visible
+ * node IDs.  Returns merged groups (same logic as buildDagGroupNodes)
+ * ready for use as dagre compound-graph parents.
+ */
+function computeDagClusters(
+  visibleIds: Set<string>,
+  airflowDagMap: AirflowDagMap,
+): { nodeIds: Set<string>; dagFiles: string[] }[] {
+  // dagFile → Set<visibleNodeId>
+  const dagToNodes = new Map<string, Set<string>>();
+  for (const [nodeId, dags] of Object.entries(airflowDagMap)) {
+    if (!visibleIds.has(nodeId)) continue;
+    for (const dag of dags) {
+      let s = dagToNodes.get(dag.dagFile);
+      if (!s) { s = new Set(); dagToNodes.set(dag.dagFile, s); }
+      s.add(nodeId);
+    }
+  }
+
+  // Merge DAGs covering the exact same set of visible nodes
+  const nodeSetKey = (ids: Set<string>) => Array.from(ids).sort().join('\0');
+  const groups = new Map<string, { nodeIds: Set<string>; dagFiles: string[] }>();
+
+  for (const [dagFile, nodeIds] of dagToNodes) {
+    if (nodeIds.size < 2) continue;
+    const key = nodeSetKey(nodeIds);
+    let g = groups.get(key);
+    if (!g) { g = { nodeIds, dagFiles: [] }; groups.set(key, g); }
+    g.dagFiles.push(dagFile.replace(/\.py$/, ''));
+  }
+
+  return Array.from(groups.values());
+}
+
+/**
+ * Layout using dagre's compound-graph mode so that nodes sharing a DAG
+ * are clustered together and non-member nodes stay outside the cluster
+ * bounding box.
+ */
+function layoutGraphWithDagGroups(
+  nodes: Node[],
+  edges: Edge[],
+  airflowDagMap: AirflowDagMap,
+): { nodes: Node[]; edges: Edge[] } {
+  if (nodes.length === 0) return { nodes, edges };
+
+  const visibleIds = new Set(nodes.map((n) => n.id));
+  const clusters = computeDagClusters(visibleIds, airflowDagMap);
+
+  // Fall back to regular layout if there are no multi-node clusters
+  if (clusters.length === 0) return layoutGraph(nodes, edges);
+
+  // Create compound graph
+  const g = new Dagre.graphlib.Graph({ compound: true }).setDefaultEdgeLabel(() => ({}));
+  g.setGraph({ rankdir: 'LR', nodesep: 40, ranksep: 80, marginx: 40, marginy: 40 });
+
+  // Add all real nodes
+  for (const node of nodes) {
+    const w = estimateNodeWidth((node.data as any).label);
+    g.setNode(node.id, { width: w, height: NODE_HEIGHT });
+  }
+
+  // Add edges
+  for (const edge of edges) {
+    g.setEdge(edge.source, edge.target);
+  }
+
+  // Sort clusters largest-first so bigger groups win if a node belongs
+  // to multiple clusters (dagre compound allows only one parent).
+  const sorted = [...clusters].sort((a, b) => b.nodeIds.size - a.nodeIds.size);
+  const assigned = new Set<string>();
+
+  sorted.forEach((cluster, idx) => {
+    const clusterId = `__dag_cluster_${idx}`;
+    g.setNode(clusterId, {});
+
+    for (const nid of cluster.nodeIds) {
+      if (!assigned.has(nid)) {
+        g.setParent(nid, clusterId);
+        assigned.add(nid);
+      }
+    }
+  });
+
+  Dagre.layout(g);
+
+  const layoutedNodes = nodes.map((node) => {
+    const pos = g.node(node.id);
+    return {
+      ...node,
+      position: { x: pos.x - pos.width / 2, y: pos.y - NODE_HEIGHT / 2 },
+    };
+  });
+
+  return { nodes: layoutedNodes, edges };
+}
+
+// ── DAG group containers ──────────────────────────────────────────────
+
+const GROUP_PADDING_X = 24;
+const GROUP_PADDING_TOP = 28;   // extra room for the label row
+const GROUP_PADDING_BOTTOM = 16;
+
+/**
+ * Build translucent container nodes that group visible nodes sharing common
+ * Airflow DAGs.  Each container is per-unique-set-of-nodes: if DAG A and
+ * DAG B both cover the exact same visible nodes, they merge into one
+ * container labelled with both names.  Intensity (opacity) rises with
+ * the number of shared DAGs.
+ */
+export function buildDagGroupNodes(
+  positionedNodes: Node[],
+  airflowDagMap: AirflowDagMap,
+): Node[] {
+  const visibleIds = new Set(positionedNodes.map((n) => n.id));
+
+  // 1. Build dagFile → Set<visibleNodeId>
+  const dagToNodes = new Map<string, Set<string>>();
+  for (const [nodeId, dags] of Object.entries(airflowDagMap)) {
+    if (!visibleIds.has(nodeId)) continue;
+    for (const dag of dags) {
+      let s = dagToNodes.get(dag.dagFile);
+      if (!s) { s = new Set(); dagToNodes.set(dag.dagFile, s); }
+      s.add(nodeId);
+    }
+  }
+
+  // 2. Group DAGs that cover the exact same set of visible nodes
+  //    key = sorted node IDs joined → { dagFiles[], nodeIds }
+  const nodeSetKey = (ids: Set<string>) => Array.from(ids).sort().join('\0');
+  const groups = new Map<string, { nodeIds: Set<string>; dagFiles: string[] }>();
+
+  for (const [dagFile, nodeIds] of dagToNodes) {
+    if (nodeIds.size < 2) continue;                 // only group 2+ nodes
+    const key = nodeSetKey(nodeIds);
+    let g = groups.get(key);
+    if (!g) { g = { nodeIds, dagFiles: [] }; groups.set(key, g); }
+    g.dagFiles.push(dagFile.replace(/\.py$/, ''));
+  }
+
+  if (groups.size === 0) return [];
+
+  // Pre-index positioned nodes for fast lookup
+  const nodeById = new Map<string, Node>();
+  for (const n of positionedNodes) nodeById.set(n.id, n);
+
+  // 3. For each merged group compute bounding box & create a container node
+  const maxDagCount = Math.max(...Array.from(groups.values()).map((g) => g.dagFiles.length));
+  const result: Node[] = [];
+
+  let idx = 0;
+  for (const { nodeIds, dagFiles } of groups.values()) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    for (const nid of nodeIds) {
+      const node = nodeById.get(nid);
+      if (!node) continue;
+      const w = estimateNodeWidth((node.data as any).label || '');
+      const x = node.position.x;
+      const y = node.position.y;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x + w > maxX) maxX = x + w;
+      if (y + NODE_HEIGHT > maxY) maxY = y + NODE_HEIGHT;
+    }
+
+    if (minX === Infinity) continue;
+
+    const width  = (maxX - minX) + GROUP_PADDING_X * 2;
+    const height = (maxY - minY) + GROUP_PADDING_TOP + GROUP_PADDING_BOTTOM;
+
+    // Intensity: 0 = 1 DAG, 1 = maxDagCount DAGs
+    const intensity = maxDagCount > 1
+      ? (dagFiles.length - 1) / (maxDagCount - 1)
+      : 0;
+
+    result.push({
+      id: `dag-group-${idx++}`,
+      type: 'dagGroup',
+      position: { x: minX - GROUP_PADDING_X, y: minY - GROUP_PADDING_TOP },
+      data: { dagFiles, width, height, intensity, memberNodeIds: Array.from(nodeIds) },
+      selectable: false,
+      draggable: true,
+      connectable: false,
+      zIndex: -10,
+      dragHandle: '.dag-group-handle',
+      style: { pointerEvents: 'none' as const },
+    });
+  }
+
+  return result;
 }

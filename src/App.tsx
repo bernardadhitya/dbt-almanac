@@ -114,6 +114,7 @@ export default function App() {
   const [airflowDagMap, setAirflowDagMap] = useState<AirflowDagMap | null>(null);
   const [airflowScanning, setAirflowScanning] = useState(false);
   const [airflowProgress, setAirflowProgress] = useState<LoadingProgress | null>(null);
+  const [showDagGroups, setShowDagGroups] = useState(false);
 
   // Listen for progress events from main process
   useEffect(() => {
@@ -262,8 +263,13 @@ export default function App() {
 
   const { nodes, edges } = useMemo(() => {
     if (!manifest) return { nodes: [], edges: [] };
-    return buildGraphData(manifest, filteredIds, filters.selectedModel, highlightedIds);
-  }, [manifest, filteredIds, filters.selectedModel, highlightedIds]);
+    // When DAG groups are on, pass airflowDagMap so the layout engine
+    // clusters member nodes together (dagre compound graph).
+    const dagMapForLayout = showDagGroups ? airflowDagMap : null;
+    return buildGraphData(manifest, filteredIds, filters.selectedModel, highlightedIds, dagMapForLayout);
+    // Note: DAG group container nodes are computed inside GraphCanvas
+    // from live node positions so they follow nodes when dragged.
+  }, [manifest, filteredIds, filters.selectedModel, highlightedIds, showDagGroups, airflowDagMap]);
 
   const progressPercent = progress
     ? Math.min(((STEP_ORDER.indexOf(progress.step) + 1) / STEP_ORDER.length) * 100, 100)
@@ -280,6 +286,9 @@ export default function App() {
         nodeCount={nodes.length}
         edgeCount={edges.length}
         onOpenSettings={() => setSettingsOpen(true)}
+        hasAirflowDags={!!airflowDagMap}
+        showDagGroups={showDagGroups}
+        onShowDagGroupsChange={setShowDagGroups}
       />
 
       <div className="flex-1 relative">
@@ -390,7 +399,7 @@ export default function App() {
                 keyword={keyword}
                 onKeywordChange={setKeyword}
                 matchCount={highlightedIds.size}
-                totalVisible={nodes.filter((n) => !(n.data as any).isSource).length}
+                totalVisible={nodes.filter((n) => n.type === 'model' && !(n.data as any).isSource).length}
               />
               <ReactFlowProvider>
                 <GraphCanvas
@@ -402,6 +411,7 @@ export default function App() {
                   onNodeClick={(nodeId) => setActiveResultNodeId(nodeId)}
                   manifest={manifest}
                   airflowDagMap={airflowDagMap}
+                  showDagGroups={showDagGroups}
                 />
               </ReactFlowProvider>
             </div>

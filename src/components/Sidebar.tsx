@@ -1,6 +1,7 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import { Filters } from './Filters';
 import { ModelList } from './ModelList';
+import { AirflowIcon } from './Icons';
 import { FilterState } from '../types';
 
 const MIN_WIDTH = 240;
@@ -13,6 +14,9 @@ interface SidebarProps {
   nodeCount: number;
   edgeCount: number;
   onOpenSettings: () => void;
+  hasAirflowDags: boolean;
+  showDagGroups: boolean;
+  onShowDagGroupsChange: (show: boolean) => void;
 }
 
 export function Sidebar({
@@ -22,6 +26,9 @@ export function Sidebar({
   nodeCount,
   edgeCount,
   onOpenSettings,
+  hasAirflowDags,
+  showDagGroups,
+  onShowDagGroupsChange,
 }: SidebarProps) {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -86,6 +93,30 @@ export function Sidebar({
           disabled={!filters.selectedModel}
         />
       </div>
+
+      {/* DAG Groups toggle — only visible when Airflow DAGs are loaded */}
+      {hasAirflowDags && (
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">
+              <AirflowIcon className="w-3.5 h-3.5" />
+              DAG Groups
+            </span>
+            <button
+              onClick={() => onShowDagGroupsChange(!showDagGroups)}
+              className={`relative w-9 h-5 rounded-full transition-colors ${
+                showDagGroups ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                  showDagGroups ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </label>
+        </div>
+      )}
 
       {/* Model list */}
       <div className="flex-1 min-h-0 flex flex-col px-4 py-3">
