@@ -344,11 +344,12 @@ export function buildDagGroupNodes(
       id: `dag-group-${idx++}`,
       type: 'dagGroup',
       position: { x: minX - GROUP_PADDING_X, y: minY - GROUP_PADDING_TOP },
-      data: { dagFiles, width, height, intensity },
+      data: { dagFiles, width, height, intensity, memberNodeIds: Array.from(nodeIds) },
       selectable: false,
-      draggable: false,
+      draggable: true,
       connectable: false,
       zIndex: -10,
+      dragHandle: '.dag-group-handle',
       style: { pointerEvents: 'none' as const },
     });
   }

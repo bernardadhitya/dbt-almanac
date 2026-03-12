@@ -8,6 +8,22 @@ export interface DagGroupNodeData {
   height: number;
   /** 0-1 — higher = more shared DAGs, more opaque */
   intensity: number;
+  /** IDs of model/source nodes inside this container */
+  memberNodeIds: string[];
+}
+
+/** Small grip dots icon to hint "drag here" */
+function GripIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 6 10" fill="currentColor" className={className}>
+      <circle cx="1" cy="1" r="0.9" />
+      <circle cx="5" cy="1" r="0.9" />
+      <circle cx="1" cy="5" r="0.9" />
+      <circle cx="5" cy="5" r="0.9" />
+      <circle cx="1" cy="9" r="0.9" />
+      <circle cx="5" cy="9" r="0.9" />
+    </svg>
+  );
 }
 
 function DagGroupNodeComponent({ data }: { data: DagGroupNodeData }) {
@@ -16,6 +32,7 @@ function DagGroupNodeComponent({ data }: { data: DagGroupNodeData }) {
   // Base opacity 0.06, scaling up to ~0.22 with intensity
   const bgOpacity = 0.06 + intensity * 0.16;
   const borderOpacity = 0.15 + intensity * 0.25;
+  const headerBgOpacity = 0.10 + intensity * 0.14;
 
   const label =
     dagFiles.length <= 2
@@ -32,8 +49,20 @@ function DagGroupNodeComponent({ data }: { data: DagGroupNodeData }) {
         border: `1.5px dashed rgba(59, 130, 246, ${borderOpacity})`,
       }}
     >
-      {/* Label in top-left corner */}
-      <div className="flex items-center gap-1 px-2.5 py-1.5">
+      {/*
+        Header — window-style drag handle.
+        pointer-events-auto overrides the wrapper's pointer-events:none
+        so this strip is the only grabbable part.  The body below stays
+        transparent and lets canvas panning work normally.
+      */}
+      <div
+        className="dag-group-handle pointer-events-auto cursor-grab active:cursor-grabbing flex items-center gap-1.5 px-2.5 py-1 rounded-t-xl select-none"
+        style={{
+          backgroundColor: `rgba(59, 130, 246, ${headerBgOpacity})`,
+          borderBottom: `1px solid rgba(59, 130, 246, ${borderOpacity * 0.6})`,
+        }}
+      >
+        <GripIcon className="w-1.5 h-2.5 shrink-0 text-blue-500/40" />
         <AirflowIcon className="w-3 h-3 shrink-0" />
         <span
           className="text-[9px] font-semibold truncate"
