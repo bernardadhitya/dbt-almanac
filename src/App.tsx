@@ -281,6 +281,7 @@ export default function App() {
     <div className="h-screen w-screen flex bg-gray-50 dark:bg-gray-950">
       <Sidebar
         modelNames={manifest?.modelNames || []}
+        models={manifest?.models ?? null}
         filters={filters}
         onFiltersChange={setFilters}
         nodeCount={nodes.length}
