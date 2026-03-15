@@ -44,9 +44,9 @@ export interface ParsedManifest {
 
 export interface FilterState {
   selectedModel: string | null;
-  upstream: boolean;
-  downstream: boolean;
-  level: number;
+  upstreamLevel: number;   // 1–5
+  downstreamLevel: number; // 1–5
+  locked: boolean;         // sync both handles
 }
 
 export interface Settings {

@@ -98,9 +98,9 @@ export default function App() {
   const [manifest, setManifest] = useState<ParsedManifest | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     selectedModel: null,
-    upstream: true,
-    downstream: true,
-    level: 3,
+    upstreamLevel: 3,
+    downstreamLevel: 3,
+    locked: true,
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
