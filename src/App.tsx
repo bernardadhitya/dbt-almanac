@@ -94,7 +94,7 @@ const STEP_LABELS: Record<string, string> = {
 const STEP_ORDER = ['reading', 'parsing', 'extracting', 'mapping', 'finalizing', 'done'];
 
 export default function App() {
-  const [settings, setSettings] = useState<Settings>({ projectPath: '', airflowDagsPath: '', theme: 'light' });
+  const [settings, setSettings] = useState<Settings>({ projectPath: '', airflowDagsPath: '', theme: 'light', edgeAnimations: true });
   const [manifest, setManifest] = useState<ParsedManifest | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     selectedModel: null,
@@ -412,6 +412,7 @@ export default function App() {
                   manifest={manifest}
                   airflowDagMap={airflowDagMap}
                   showDagGroups={showDagGroups}
+                  edgeAnimations={settings.edgeAnimations}
                 />
               </ReactFlowProvider>
             </div>

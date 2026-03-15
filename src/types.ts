@@ -53,6 +53,7 @@ export interface Settings {
   projectPath: string;
   airflowDagsPath: string;
   theme: 'light' | 'dark';
+  edgeAnimations: boolean;
 }
 
 export interface AirflowDagInfo {
