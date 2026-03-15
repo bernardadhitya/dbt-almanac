@@ -18,6 +18,7 @@ interface SidebarProps {
   hasAirflowDags: boolean;
   showDagGroups: boolean;
   onShowDagGroupsChange: (show: boolean) => void;
+  listAnimations?: boolean;
 }
 
 export function Sidebar({
@@ -31,6 +32,7 @@ export function Sidebar({
   hasAirflowDags,
   showDagGroups,
   onShowDagGroupsChange,
+  listAnimations = true,
 }: SidebarProps) {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -127,6 +129,7 @@ export function Sidebar({
           models={models}
           selectedModel={filters.selectedModel}
           onSelect={(name) => onFiltersChange({ ...filters, selectedModel: name })}
+          listAnimations={listAnimations}
         />
       </div>
 

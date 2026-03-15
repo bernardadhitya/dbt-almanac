@@ -10,12 +10,14 @@ interface ModelListProps {
   models: Map<string, SlimNode> | null;
   selectedModel: string | null;
   onSelect: (name: string | null) => void;
+  listAnimations?: boolean;
 }
 
 const LIST_ITEM_HEIGHT = 32;
 const CARD_ITEM_HEIGHT = 92;
 const OVERSCAN = 10;
 const DESC_MAX_LENGTH = 90;
+const SHUFFLE_DURATION = 300; // ms
 
 /** Find a SlimNode by model name (looks up by model.{name} key pattern) */
 function findNode(models: Map<string, SlimNode> | null, name: string): SlimNode | undefined {
@@ -59,12 +61,27 @@ function CardViewIcon() {
   );
 }
 
-export function ModelList({ modelNames, models, selectedModel, onSelect }: ModelListProps) {
+/**
+ * Animation phases:
+ *  'idle'    – no animation, no transition
+ *  'prepare' – offsets applied (items at OLD positions), transition: none
+ *  'animate' – offsets cleared (items move to NEW positions), transition active
+ */
+type AnimPhase = 'idle' | 'prepare' | 'animate';
+
+export function ModelList({ modelNames, models, selectedModel, onSelect, listAnimations = true }: ModelListProps) {
   const [listFilter, setListFilter] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
+
+  // Animation state
+  const [animPhase, setAnimPhase] = useState<AnimPhase>('idle');
+  const [animOffsets, setAnimOffsets] = useState<Map<string, number>>(new Map());
+  const prevPositionsRef = useRef<Map<string, number>>(new Map());
+  const animFrameRef = useRef<number | null>(null);
+  const animTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const itemHeight = viewMode === 'list' ? LIST_ITEM_HEIGHT : CARD_ITEM_HEIGHT;
 
@@ -72,6 +89,64 @@ export function ModelList({ modelNames, models, selectedModel, onSelect }: Model
     if (!listFilter) return modelNames;
     return filterByRelevance(modelNames, listFilter);
   }, [modelNames, listFilter]);
+
+  // Build current position map and trigger shuffle animation
+  useEffect(() => {
+    const prevPositions = prevPositionsRef.current;
+    const newPositions = new Map<string, number>();
+    filtered.forEach((name, idx) => {
+      newPositions.set(name, idx * itemHeight);
+    });
+
+    if (listAnimations && prevPositions.size > 0) {
+      const offsets = new Map<string, number>();
+      let hasOffsets = false;
+
+      filtered.forEach((name, idx) => {
+        const newY = idx * itemHeight;
+        const oldY = prevPositions.get(name);
+        if (oldY !== undefined && oldY !== newY) {
+          // Item moved: offset = where it was - where it is now
+          offsets.set(name, oldY - newY);
+          hasOffsets = true;
+        } else if (oldY === undefined) {
+          // New item entering: fade in via a special offset marker
+          offsets.set(name, -1); // sentinel for fade-in
+          hasOffsets = true;
+        }
+      });
+
+      if (hasOffsets) {
+        // Clean up any pending animation
+        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+        if (animTimerRef.current) clearTimeout(animTimerRef.current);
+
+        // Phase 1: 'prepare' — snap items to old positions (no transition)
+        setAnimOffsets(new Map(offsets));
+        setAnimPhase('prepare');
+
+        // Phase 2: next frame — clear offsets, enable transition so items glide to new positions
+        animFrameRef.current = requestAnimationFrame(() => {
+          animFrameRef.current = requestAnimationFrame(() => {
+            setAnimOffsets(new Map());
+            setAnimPhase('animate');
+
+            // Phase 3: after transition completes, go back to idle
+            animTimerRef.current = setTimeout(() => {
+              setAnimPhase('idle');
+            }, SHUFFLE_DURATION + 50);
+          });
+        });
+      }
+    }
+
+    prevPositionsRef.current = newPositions;
+
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (animTimerRef.current) clearTimeout(animTimerRef.current);
+    };
+  }, [filtered, itemHeight, listAnimations]);
 
   // Reset scroll when filter or view mode changes
   useEffect(() => {
@@ -160,6 +235,31 @@ export function ModelList({ modelNames, models, selectedModel, onSelect }: Model
             const idx = startIdx + i;
             const isActive = name === selectedModel;
 
+            // Compute animation style based on phase
+            let animStyle: React.CSSProperties = {};
+            if (listAnimations) {
+              const offset = animOffsets.get(name);
+              const isFadeIn = offset === -1;
+
+              if (animPhase === 'prepare') {
+                // Snap to old position instantly (no transition)
+                const translateY = offset !== undefined && !isFadeIn ? offset : 0;
+                animStyle = {
+                  transform: `translateY(${translateY}px)`,
+                  transition: 'none',
+                  opacity: isFadeIn ? 0 : 1,
+                };
+              } else if (animPhase === 'animate') {
+                // Animate to new position (transition active, offset cleared so translateY=0)
+                animStyle = {
+                  transform: 'translateY(0)',
+                  transition: `transform ${SHUFFLE_DURATION}ms cubic-bezier(0.25, 0.8, 0.25, 1), opacity ${SHUFFLE_DURATION}ms ease`,
+                  opacity: 1,
+                };
+              }
+              // 'idle' → no extra styles
+            }
+
             if (viewMode === 'list') {
               return (
                 <button
@@ -171,6 +271,7 @@ export function ModelList({ modelNames, models, selectedModel, onSelect }: Model
                     left: 0,
                     right: 0,
                     height: itemHeight,
+                    ...animStyle,
                   }}
                   className={`flex items-center gap-2 px-4 text-xs text-left w-full transition-colors ${
                     isActive
@@ -201,6 +302,7 @@ export function ModelList({ modelNames, models, selectedModel, onSelect }: Model
                   left: 0,
                   right: 0,
                   height: itemHeight,
+                  ...animStyle,
                 }}
                 className={`flex flex-col justify-center px-4 py-2 text-left w-full transition-colors border-b ${
                   isActive
@@ -228,7 +330,7 @@ export function ModelList({ modelNames, models, selectedModel, onSelect }: Model
                   <MaterialBadge materialized={node?.materialized} />
                 </div>
 
-                {/* Row 2: description */}
+                {/* Row 3: description */}
                 <p className={`text-[11px] leading-tight mt-1 line-clamp-2 ${
                   truncDesc
                     ? 'text-gray-500 dark:text-gray-400'
