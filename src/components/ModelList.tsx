@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { filterByRelevance } from '../utils/search';
 
 interface ModelListProps {
   modelNames: string[];
@@ -17,8 +18,7 @@ export function ModelList({ modelNames, selectedModel, onSelect }: ModelListProp
 
   const filtered = useMemo(() => {
     if (!listFilter) return modelNames;
-    const q = listFilter.toLowerCase();
-    return modelNames.filter((n) => n.toLowerCase().includes(q));
+    return filterByRelevance(modelNames, listFilter);
   }, [modelNames, listFilter]);
 
   // Measure container
