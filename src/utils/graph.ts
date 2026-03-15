@@ -19,9 +19,9 @@ export function getFilteredNodeIds(
   visited.add(selectedId);
 
   // BFS upstream
-  if (filters.upstream) {
+  {
     let frontier = [selectedId];
-    for (let level = 0; level < filters.level; level++) {
+    for (let depth = 0; depth < filters.upstreamLevel; depth++) {
       const nextFrontier: string[] = [];
       for (const nodeId of frontier) {
         const parents = manifest.parentMap.get(nodeId) || [];
@@ -38,9 +38,9 @@ export function getFilteredNodeIds(
   }
 
   // BFS downstream
-  if (filters.downstream) {
+  {
     let frontier = [selectedId];
-    for (let level = 0; level < filters.level; level++) {
+    for (let depth = 0; depth < filters.downstreamLevel; depth++) {
       const nextFrontier: string[] = [];
       for (const nodeId of frontier) {
         const children = manifest.childMap.get(nodeId) || [];
