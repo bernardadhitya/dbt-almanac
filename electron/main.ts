@@ -9,6 +9,7 @@ const store = new Store({
     airflowDagsPath: '',
     theme: 'light' as 'light' | 'dark',
     edgeAnimations: true,
+    listAnimations: true,
   },
 });
 

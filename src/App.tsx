@@ -94,7 +94,7 @@ const STEP_LABELS: Record<string, string> = {
 const STEP_ORDER = ['reading', 'parsing', 'extracting', 'mapping', 'finalizing', 'done'];
 
 export default function App() {
-  const [settings, setSettings] = useState<Settings>({ projectPath: '', airflowDagsPath: '', theme: 'light', edgeAnimations: true });
+  const [settings, setSettings] = useState<Settings>({ projectPath: '', airflowDagsPath: '', theme: 'light', edgeAnimations: true, listAnimations: true });
   const [manifest, setManifest] = useState<ParsedManifest | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     selectedModel: null,
@@ -281,6 +281,7 @@ export default function App() {
     <div className="h-screen w-screen flex bg-gray-50 dark:bg-gray-950">
       <Sidebar
         modelNames={manifest?.modelNames || []}
+        models={manifest?.models ?? null}
         filters={filters}
         onFiltersChange={setFilters}
         nodeCount={nodes.length}
@@ -289,6 +290,7 @@ export default function App() {
         hasAirflowDags={!!airflowDagMap}
         showDagGroups={showDagGroups}
         onShowDagGroupsChange={setShowDagGroups}
+        listAnimations={settings.listAnimations}
       />
 
       <div className="flex-1 relative">

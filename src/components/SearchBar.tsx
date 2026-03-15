@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { filterByRelevance } from '../utils/search';
 
 interface SearchBarProps {
   modelNames: string[];
@@ -13,9 +14,10 @@ export function SearchBar({ modelNames, selectedModel, onSelect }: SearchBarProp
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  const filtered = query.length > 0
-    ? modelNames.filter((n) => n.toLowerCase().includes(query.toLowerCase())).slice(0, 50)
-    : [];
+  const filtered = useMemo(() => {
+    if (query.length === 0) return [];
+    return filterByRelevance(modelNames, query, 50);
+  }, [query, modelNames]);
 
   const handleSelect = useCallback((name: string) => {
     onSelect(name);

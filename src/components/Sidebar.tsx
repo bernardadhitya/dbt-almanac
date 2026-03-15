@@ -2,13 +2,14 @@ import { useRef, useCallback, useState, useEffect } from 'react';
 import { Filters } from './Filters';
 import { ModelList } from './ModelList';
 import { AirflowIcon } from './Icons';
-import { FilterState } from '../types';
+import { FilterState, SlimNode } from '../types';
 
 const MIN_WIDTH = 240;
 const DEFAULT_WIDTH = 288;
 
 interface SidebarProps {
   modelNames: string[];
+  models: Map<string, SlimNode> | null;
   filters: FilterState;
   onFiltersChange: (filters: FilterState) => void;
   nodeCount: number;
@@ -17,10 +18,12 @@ interface SidebarProps {
   hasAirflowDags: boolean;
   showDagGroups: boolean;
   onShowDagGroupsChange: (show: boolean) => void;
+  listAnimations?: boolean;
 }
 
 export function Sidebar({
   modelNames,
+  models,
   filters,
   onFiltersChange,
   nodeCount,
@@ -29,6 +32,7 @@ export function Sidebar({
   hasAirflowDags,
   showDagGroups,
   onShowDagGroupsChange,
+  listAnimations = true,
 }: SidebarProps) {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -122,8 +126,10 @@ export function Sidebar({
       <div className="flex-1 min-h-0 flex flex-col px-4 py-3">
         <ModelList
           modelNames={modelNames}
+          models={models}
           selectedModel={filters.selectedModel}
           onSelect={(name) => onFiltersChange({ ...filters, selectedModel: name })}
+          listAnimations={listAnimations}
         />
       </div>
 
