@@ -77,9 +77,10 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
   }, [inputEdges, setEdges]);
 
   // Compute styled edges: highlight connected edges on hover, dim the rest.
-  // Gated by the edgeAnimations setting — when off, edges pass through unchanged.
+  // edgeAnimations controls only the flowing dash animation and glow filter;
+  // the blue highlight + dimming of other edges is always active.
   const styledEdges = useMemo(() => {
-    if (!edgeAnimations || !hoveredNodeId) return edges;
+    if (!hoveredNodeId) return edges;
 
     return edges.map((edge) => {
       const isConnected =
@@ -88,12 +89,14 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
       if (isConnected) {
         return {
           ...edge,
-          animated: true,
+          animated: edgeAnimations,
           style: {
             stroke: '#3b82f6',
             strokeWidth: 2.5,
-            filter:
-              'drop-shadow(0 0 3px rgba(59,130,246,0.55)) drop-shadow(0 0 7px rgba(59,130,246,0.3))',
+            ...(edgeAnimations && {
+              filter:
+                'drop-shadow(0 0 3px rgba(59,130,246,0.55)) drop-shadow(0 0 7px rgba(59,130,246,0.3))',
+            }),
             transition: 'stroke 0.2s ease, stroke-width 0.2s ease',
           },
           markerEnd: {
@@ -243,8 +246,8 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
     // Cancel any pending dismiss (e.g. re-entering same node from tooltip)
     cancelDismiss();
 
-    // Highlight edges immediately (only when animations are enabled)
-    if (edgeAnimations) setHoveredNodeId(node.id);
+    // Highlight edges immediately
+    setHoveredNodeId(node.id);
 
     // If tooltip is already showing for this node, keep it
     if (tooltip?.nodeId === node.id) return;
@@ -263,7 +266,7 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
       }
       showTimerRef.current = null;
     }, SHOW_DELAY);
-  }, [cancelDismiss, tooltip?.nodeId, edgeAnimations]);
+  }, [cancelDismiss, tooltip?.nodeId]);
 
   const handleNodeMouseLeave = useCallback(() => {
     // Cancel any pending show

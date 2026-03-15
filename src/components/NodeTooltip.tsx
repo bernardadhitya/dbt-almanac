@@ -12,7 +12,7 @@ interface NodeTooltipProps {
 }
 
 const MAX_COLUMNS = 12;
-const OFFSET = 14;
+const OFFSET = 48;
 
 /** Infer the source system from external format, loader, source_name, or schema */
 function inferSourceSystem(node: SlimNode): string | null {
@@ -93,21 +93,27 @@ export function NodeTooltip({ node, x, y, onMouseEnter, onMouseLeave, airflowDag
   const externalUris = node.external_uris || [];
 
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ left: x + OFFSET, top: y + OFFSET });
+  const [pos, setPos] = useState({ left: x, top: y - OFFSET });
 
-  // Adjust position if tooltip overflows viewport
+  // Default: centered horizontally on cursor, above the cursor.
+  // Falls back to below cursor or shifted left/right if near viewport edges.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    let left = x + OFFSET;
-    let top = y + OFFSET;
-    if (left + rect.width > vw - 8) left = x - rect.width - OFFSET;
-    if (top + rect.height > vh - 8) top = y - rect.height - OFFSET;
+
+    // Horizontal: center on cursor
+    let left = x - rect.width / 2;
+    if (left + rect.width > vw - 8) left = vw - rect.width - 8;
     if (left < 8) left = 8;
-    if (top < 8) top = 8;
+
+    // Vertical: above cursor by default
+    let top = y - rect.height - OFFSET;
+    if (top < 8) top = y + OFFSET; // flip below if no room above
+    if (top + rect.height > vh - 8) top = vh - rect.height - 8;
+
     setPos({ left, top });
   }, [x, y]);
 
