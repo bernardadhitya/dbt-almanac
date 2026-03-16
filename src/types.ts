@@ -57,9 +57,16 @@ export interface Settings {
   listAnimations: boolean;
 }
 
+export interface AirflowSchedule {
+  type: 'cron' | 'preset' | 'timedelta' | 'dataset' | 'none' | 'unknown';
+  display: string;
+  datasets?: string[];
+}
+
 export interface AirflowDagInfo {
   dagFile: string;
   selector: string;
+  schedule?: AirflowSchedule;
 }
 
 /** Mapping from model unique_id to list of Airflow DAGs that invoke it */

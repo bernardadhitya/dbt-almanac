@@ -1,6 +1,6 @@
 import Dagre from '@dagrejs/dagre';
 import { type Node, type Edge, MarkerType } from '@xyflow/react';
-import { ParsedManifest, FilterState, AirflowDagMap } from '../types';
+import { ParsedManifest, FilterState, AirflowDagMap, AirflowSchedule } from '../types';
 
 export function getFilteredNodeIds(
   manifest: ParsedManifest,
@@ -280,14 +280,19 @@ export function buildDagGroupNodes(
 ): Node[] {
   const visibleIds = new Set(positionedNodes.map((n) => n.id));
 
-  // 1. Build dagFile → Set<visibleNodeId>
+  // 1. Build dagFile → Set<visibleNodeId>  and  dagFile → schedule
   const dagToNodes = new Map<string, Set<string>>();
+  const dagSchedules = new Map<string, AirflowSchedule>();
   for (const [nodeId, dags] of Object.entries(airflowDagMap)) {
     if (!visibleIds.has(nodeId)) continue;
     for (const dag of dags) {
       let s = dagToNodes.get(dag.dagFile);
       if (!s) { s = new Set(); dagToNodes.set(dag.dagFile, s); }
       s.add(nodeId);
+      // Store schedule info (first seen wins — same DAG file, same schedule)
+      if (dag.schedule && !dagSchedules.has(dag.dagFile)) {
+        dagSchedules.set(dag.dagFile, dag.schedule);
+      }
     }
   }
 
@@ -340,11 +345,18 @@ export function buildDagGroupNodes(
       ? (dagFiles.length - 1) / (maxDagCount - 1)
       : 0;
 
+    // Collect schedule info for the DAGs in this group
+    const schedules: { dagFile: string; schedule: AirflowSchedule }[] = [];
+    for (const df of dagFiles) {
+      const sched = dagSchedules.get(df + '.py') || dagSchedules.get(df);
+      if (sched) schedules.push({ dagFile: df, schedule: sched });
+    }
+
     result.push({
       id: `dag-group-${idx++}`,
       type: 'dagGroup',
       position: { x: minX - GROUP_PADDING_X, y: minY - GROUP_PADDING_TOP },
-      data: { dagFiles, width, height, intensity, memberNodeIds: Array.from(nodeIds) },
+      data: { dagFiles, width, height, intensity, memberNodeIds: Array.from(nodeIds), schedules: schedules.length > 0 ? schedules : undefined },
       selectable: false,
       draggable: true,
       connectable: false,
