@@ -20,8 +20,8 @@ import os
 import re
 import sys
 
-# Import the dbt selector parser (same directory)
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _SCRIPT_DIR)
 from dbt_select import load_manifest, resolve_selector
 
 
@@ -65,6 +65,107 @@ def extract_selectors(content: str) -> list:
     return selectors
 
 
+# ---------------------------------------------------------------------------
+# Schedule extraction
+# ---------------------------------------------------------------------------
+
+# Airflow preset schedules → human-readable descriptions
+_PRESET_MAP = {
+    "@once": "Runs once",
+    "@continuous": "Continuous",
+    "@hourly": "Every hour",
+    "@daily": "Daily at midnight",
+    "@weekly": "Weekly (Sunday midnight)",
+    "@monthly": "Monthly (1st at midnight)",
+    "@yearly": "Yearly (Jan 1st)",
+    "@annually": "Yearly (Jan 1st)",
+}
+
+# Match schedule= or schedule_interval= followed by value
+# Captures: string literal, None, timedelta(...), [Dataset(...)], or other expression
+_SCHEDULE_STR_RE = re.compile(
+    r"""(?:schedule_interval|schedule)\s*=\s*(?P<quote>['"])(?P<value>.+?)(?P=quote)""",
+    re.DOTALL,
+)
+_SCHEDULE_NONE_RE = re.compile(
+    r"""(?:schedule_interval|schedule)\s*=\s*None\b""",
+)
+_SCHEDULE_TIMEDELTA_RE = re.compile(
+    r"""(?:schedule_interval|schedule)\s*=\s*timedelta\((?P<args>[^)]+)\)""",
+)
+_SCHEDULE_DATASET_RE = re.compile(
+    r"""(?:schedule_interval|schedule)\s*=\s*\[(?P<datasets>[^\]]+)\]""",
+    re.DOTALL,
+)
+_DATASET_URI_RE = re.compile(
+    r"""(?:Dataset|Asset)\(\s*(?P<q>['"])(?P<uri>.+?)(?P=q)""",
+)
+
+
+def _timedelta_to_human(args_str: str) -> str:
+    """Convert timedelta constructor args to human-readable string."""
+    parts = []
+    for part in args_str.split(","):
+        part = part.strip()
+        if "=" in part:
+            key, val = part.split("=", 1)
+            key = key.strip()
+            val = val.strip()
+        else:
+            continue
+        try:
+            n = int(val)
+        except ValueError:
+            try:
+                n = float(val)
+            except ValueError:
+                parts.append(f"{val} {key}")
+                continue
+        unit = key.rstrip("s")  # days→day, hours→hour, etc.
+        if n == 1:
+            parts.append(f"Every {unit}")
+        else:
+            parts.append(f"Every {n} {key}")
+    return ", ".join(parts) if parts else "Interval schedule"
+
+
+def extract_schedule(content: str):
+    """
+    Extract schedule info from an Airflow DAG file.
+    Returns dict with keys: type, display
+    or None if no schedule found.
+    """
+    # Check for string literal schedule (cron or preset)
+    m = _SCHEDULE_STR_RE.search(content)
+    if m:
+        val = m.group("value").strip()
+        if val in _PRESET_MAP:
+            return {"type": "preset", "display": _PRESET_MAP[val]}
+        # Raw cron expression — human-readable conversion happens client-side
+        return {"type": "cron", "display": val.strip()}
+
+    # Check for None (manual trigger / externally triggered)
+    m = _SCHEDULE_NONE_RE.search(content)
+    if m:
+        return {"type": "none", "display": "Manual / external trigger"}
+
+    # Check for Dataset/Asset trigger
+    m = _SCHEDULE_DATASET_RE.search(content)
+    if m:
+        datasets_str = m.group("datasets")
+        uris = [dm.group("uri") for dm in _DATASET_URI_RE.finditer(datasets_str)]
+        if uris:
+            return {"type": "dataset", "display": "Dataset trigger", "datasets": uris}
+        return {"type": "dataset", "display": "Dataset trigger"}
+
+    # Check for timedelta
+    m = _SCHEDULE_TIMEDELTA_RE.search(content)
+    if m:
+        return {"type": "timedelta", "display": _timedelta_to_human(m.group("args"))}
+
+    return None
+
+
 def main():
     if len(sys.argv) < 3:
         print(
@@ -89,15 +190,20 @@ def main():
     dag_files = find_dag_files(dags_dir)
     progress("scanning", f"Found {len(dag_files)} Airflow DAG files")
 
-    # Step 2: Extract selectors from each DAG
-    progress("extracting", "Extracting dbt_selector values from DAGs...")
+    # Step 2: Extract selectors and schedules from each DAG
+    progress("extracting", "Extracting dbt_selector values and schedules from DAGs...")
     dag_selectors = {}  # filename -> [selector_strings]
+    dag_schedules = {}  # filename -> schedule dict or None
     total_selectors = 0
     for fpath, fname, content in dag_files:
         selectors = extract_selectors(content)
         if selectors:
             dag_selectors[fname] = selectors
             total_selectors += len(selectors)
+        # Extract schedule regardless of selectors (we'll use it for DAGs that have selectors)
+        schedule = extract_schedule(content)
+        if schedule:
+            dag_schedules[fname] = schedule
 
     progress(
         "extracting",
@@ -133,6 +239,10 @@ def main():
                         model_to_dags[uid] = []
                     # Avoid duplicates
                     entry = {"dagFile": dag_file, "selector": selector}
+                    # Attach schedule info if available
+                    sched = dag_schedules.get(dag_file)
+                    if sched:
+                        entry["schedule"] = sched
                     if entry not in model_to_dags[uid]:
                         model_to_dags[uid].append(entry)
                 resolved_count += 1

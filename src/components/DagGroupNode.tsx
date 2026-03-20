@@ -1,6 +1,13 @@
-import { memo } from 'react';
+import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
+import cronstrue from 'cronstrue';
 import { AirflowIcon } from './Icons';
+import type { AirflowSchedule } from '../types';
+
+export interface DagScheduleInfo {
+  dagFile: string;
+  schedule: AirflowSchedule;
+}
 
 export interface DagGroupNodeData {
   dagFiles: string[];
@@ -10,6 +17,8 @@ export interface DagGroupNodeData {
   intensity: number;
   /** IDs of model/source nodes inside this container */
   memberNodeIds: string[];
+  /** Schedule info per DAG file */
+  schedules?: DagScheduleInfo[];
 }
 
 /** Small grip dots icon to hint "drag here" */
@@ -26,8 +35,115 @@ function GripIcon({ className }: { className?: string }) {
   );
 }
 
+/** Clock icon for schedule display */
+function ClockIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" className={className} style={style}>
+      <circle cx="8" cy="8" r="6.5" strokeWidth={1.3} />
+      <path d="M8 4.5V8l2.5 1.5" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Dataset icon for dataset-triggered DAGs */
+function DatasetIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" className={className} style={style}>
+      <ellipse cx="8" cy="4" rx="6" ry="2.5" strokeWidth={1.2} />
+      <path d="M2 4v4c0 1.38 2.69 2.5 6 2.5s6-1.12 6-2.5V4" strokeWidth={1.2} />
+      <path d="M2 8v4c0 1.38 2.69 2.5 6 2.5s6-1.12 6-2.5V8" strokeWidth={1.2} />
+    </svg>
+  );
+}
+
+/** Build a human-readable schedule label from schedule info */
+function ScheduleBadge({ schedules, intensity }: { schedules: DagScheduleInfo[]; intensity: number }) {
+  if (schedules.length === 0) return null;
+
+  // Deduplicate and convert cron expressions to human-readable
+  const uniqueSchedules: { display: string; type: string; datasets?: string[] }[] = [];
+  const seen = new Set<string>();
+  for (const s of schedules) {
+    const rawDisplay = s.schedule.display;
+    if (!seen.has(rawDisplay)) {
+      seen.add(rawDisplay);
+      // Convert raw cron to human-readable on the client side
+      let display = rawDisplay;
+      if (s.schedule.type === 'cron') {
+        try {
+          display = cronstrue.toString(rawDisplay);
+        } catch {
+          display = `Cron: ${rawDisplay}`;
+        }
+      }
+      uniqueSchedules.push({
+        display,
+        type: s.schedule.type,
+        datasets: s.schedule.datasets,
+      });
+    }
+  }
+
+  const isDataset = uniqueSchedules.some(s => s.type === 'dataset');
+
+  // Build tooltip with full details
+  const tooltipLines: string[] = [];
+  for (const s of uniqueSchedules) {
+    tooltipLines.push(s.display);
+    if (s.datasets && s.datasets.length > 0) {
+      for (const ds of s.datasets) {
+        tooltipLines.push(`  → ${ds}`);
+      }
+    }
+  }
+
+  // Display label: if single schedule show it, if multiple show first + count
+  let displayLabel: string;
+  if (uniqueSchedules.length === 1) {
+    displayLabel = uniqueSchedules[0].display;
+  } else {
+    displayLabel = `${uniqueSchedules[0].display} +${uniqueSchedules.length - 1}`;
+  }
+
+  // For dataset triggers, show dataset URIs inline if just one with few datasets
+  const showDatasets = isDataset && uniqueSchedules.length === 1 &&
+    uniqueSchedules[0].datasets && uniqueSchedules[0].datasets.length <= 2;
+
+  return (
+    <div
+      className="pointer-events-auto flex items-center gap-1 px-1.5 py-0.5 rounded-md select-none shrink min-w-0"
+      style={{
+        backgroundColor: `rgba(59, 130, 246, ${0.08 + intensity * 0.12})`,
+      }}
+      title={tooltipLines.join('\n')}
+    >
+      {isDataset ? (
+        <DatasetIcon className="w-2.5 h-2.5 shrink-0" style={{ stroke: `rgba(59, 130, 246, ${0.5 + intensity * 0.35})` }} />
+      ) : (
+        <ClockIcon className="w-2.5 h-2.5 shrink-0" style={{ stroke: `rgba(59, 130, 246, ${0.5 + intensity * 0.35})` }} />
+      )}
+      <span
+        className="text-[8px] font-medium truncate"
+        style={{ color: `rgba(59, 130, 246, ${0.5 + intensity * 0.35})` }}
+      >
+        {displayLabel}
+      </span>
+      {showDatasets && uniqueSchedules[0].datasets!.map((ds, i) => (
+        <span
+          key={i}
+          className="text-[7px] font-mono truncate max-w-[120px]"
+          style={{ color: `rgba(59, 130, 246, ${0.4 + intensity * 0.3})` }}
+          title={ds}
+        >
+          {ds}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function DagGroupNodeComponent({ data }: { data: DagGroupNodeData }) {
-  const { dagFiles, width, height, intensity } = data;
+  const { dagFiles, width, height, intensity, schedules } = data;
 
   // Base opacity 0.06, scaling up to ~0.22 with intensity
   const bgOpacity = 0.06 + intensity * 0.16;
@@ -62,10 +178,11 @@ function DagGroupNodeComponent({ data }: { data: DagGroupNodeData }) {
           borderBottom: `1px solid rgba(59, 130, 246, ${borderOpacity * 0.6})`,
         }}
       >
+        {/* Left side: grip, icon, DAG name(s) */}
         <GripIcon className="w-1.5 h-2.5 shrink-0 text-blue-500/40" />
         <AirflowIcon className="w-3 h-3 shrink-0" />
         <span
-          className="text-[9px] font-semibold truncate"
+          className="text-[9px] font-semibold truncate min-w-0"
           style={{ color: `rgba(59, 130, 246, ${0.55 + intensity * 0.35})` }}
           title={dagFiles.join(', ')}
         >
@@ -81,6 +198,11 @@ function DagGroupNodeComponent({ data }: { data: DagGroupNodeData }) {
           >
             {dagFiles.length} DAGs
           </span>
+        )}
+
+        {/* Right side: schedule badge */}
+        {schedules && schedules.length > 0 && (
+          <ScheduleBadge schedules={schedules} intensity={intensity} />
         )}
       </div>
 
