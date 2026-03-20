@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
+import cronstrue from 'cronstrue';
 import { AirflowIcon } from './Icons';
 import type { AirflowSchedule } from '../types';
 
@@ -59,14 +60,24 @@ function DatasetIcon({ className, style }: { className?: string; style?: React.C
 function ScheduleBadge({ schedules, intensity }: { schedules: DagScheduleInfo[]; intensity: number }) {
   if (schedules.length === 0) return null;
 
-  // Deduplicate display strings
+  // Deduplicate and convert cron expressions to human-readable
   const uniqueSchedules: { display: string; type: string; datasets?: string[] }[] = [];
   const seen = new Set<string>();
   for (const s of schedules) {
-    if (!seen.has(s.schedule.display)) {
-      seen.add(s.schedule.display);
+    const rawDisplay = s.schedule.display;
+    if (!seen.has(rawDisplay)) {
+      seen.add(rawDisplay);
+      // Convert raw cron to human-readable on the client side
+      let display = rawDisplay;
+      if (s.schedule.type === 'cron') {
+        try {
+          display = cronstrue.toString(rawDisplay);
+        } catch {
+          display = `Cron: ${rawDisplay}`;
+        }
+      }
       uniqueSchedules.push({
-        display: s.schedule.display,
+        display,
         type: s.schedule.type,
         datasets: s.schedule.datasets,
       });

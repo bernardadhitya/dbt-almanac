@@ -21,9 +21,6 @@ import re
 import sys
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Add vendor directory (bundled dependencies) and script dir to path
-sys.path.insert(0, os.path.join(_SCRIPT_DIR, "vendor"))
 sys.path.insert(0, _SCRIPT_DIR)
 from dbt_select import load_manifest, resolve_selector
 
@@ -72,12 +69,6 @@ def extract_selectors(content: str) -> list:
 # Schedule extraction
 # ---------------------------------------------------------------------------
 
-try:
-    from cron_descriptor import ExpressionDescriptor, Options, CasingTypeEnum
-    _HAS_CRON_DESCRIPTOR = True
-except ImportError:
-    _HAS_CRON_DESCRIPTOR = False
-
 # Airflow preset schedules → human-readable descriptions
 _PRESET_MAP = {
     "@once": "Runs once",
@@ -109,20 +100,6 @@ _SCHEDULE_DATASET_RE = re.compile(
 _DATASET_URI_RE = re.compile(
     r"""(?:Dataset|Asset)\(\s*(?P<q>['"])(?P<uri>.+?)(?P=q)""",
 )
-
-
-def _cron_to_human(cron_str: str) -> str:
-    """Convert a cron expression to a human-readable string using cron-descriptor."""
-    if _HAS_CRON_DESCRIPTOR:
-        try:
-            opts = Options()
-            opts.casing_type = CasingTypeEnum.Sentence
-            opts.use_24hour_time_format = False
-            opts.locale_code = "en_US"
-            return ExpressionDescriptor(cron_str.strip(), opts).get_description()
-        except Exception:
-            return f"Cron: {cron_str}"
-    return f"Cron: {cron_str}"
 
 
 def _timedelta_to_human(args_str: str) -> str:
@@ -164,8 +141,8 @@ def extract_schedule(content: str):
         val = m.group("value").strip()
         if val in _PRESET_MAP:
             return {"type": "preset", "display": _PRESET_MAP[val]}
-        # Assume it's a cron expression
-        return {"type": "cron", "display": _cron_to_human(val)}
+        # Raw cron expression — human-readable conversion happens client-side
+        return {"type": "cron", "display": val.strip()}
 
     # Check for None (manual trigger / externally triggered)
     m = _SCHEDULE_NONE_RE.search(content)
