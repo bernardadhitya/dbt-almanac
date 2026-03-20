@@ -111,7 +111,7 @@ function ScheduleBadge({ schedules, intensity }: { schedules: DagScheduleInfo[];
 
   return (
     <div
-      className="pointer-events-auto flex items-center gap-1 px-1.5 py-0.5 rounded-md select-none"
+      className="pointer-events-auto flex items-center gap-1 px-1.5 py-0.5 rounded-md select-none shrink min-w-0"
       style={{
         backgroundColor: `rgba(59, 130, 246, ${0.08 + intensity * 0.12})`,
       }}
@@ -123,7 +123,7 @@ function ScheduleBadge({ schedules, intensity }: { schedules: DagScheduleInfo[];
         <ClockIcon className="w-2.5 h-2.5 shrink-0" style={{ stroke: `rgba(59, 130, 246, ${0.5 + intensity * 0.35})` }} />
       )}
       <span
-        className="text-[8px] font-medium whitespace-nowrap"
+        className="text-[8px] font-medium truncate"
         style={{ color: `rgba(59, 130, 246, ${0.5 + intensity * 0.35})` }}
       >
         {displayLabel}
@@ -182,7 +182,7 @@ function DagGroupNodeComponent({ data }: { data: DagGroupNodeData }) {
         <GripIcon className="w-1.5 h-2.5 shrink-0 text-blue-500/40" />
         <AirflowIcon className="w-3 h-3 shrink-0" />
         <span
-          className="text-[9px] font-semibold truncate"
+          className="text-[9px] font-semibold truncate min-w-0"
           style={{ color: `rgba(59, 130, 246, ${0.55 + intensity * 0.35})` }}
           title={dagFiles.join(', ')}
         >
@@ -199,9 +199,6 @@ function DagGroupNodeComponent({ data }: { data: DagGroupNodeData }) {
             {dagFiles.length} DAGs
           </span>
         )}
-
-        {/* Spacer to push schedule to the right */}
-        <div className="flex-1" />
 
         {/* Right side: schedule badge */}
         {schedules && schedules.length > 0 && (
