@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Scan a directory of Airflow DAGs, extract dbt_selector values, resolve them
-against a dbt manifest.json, and output a mapping of model unique_id → DAG files.
+Scan a directory of Airflow DAGs, extract dbt_selector/dbt_select values,
+resolve them against a dbt manifest.json, and output a mapping of
+model unique_id → DAG files.
 
 Usage:
     python scan_airflow_dags.py <dags_directory> <manifest_path>
@@ -47,16 +48,16 @@ def find_dag_files(dags_dir: str) -> list:
     return dag_files
 
 
-# Regex to match dbt_selector = "value" or dbt_selector='value'
+# Regex to match dbt_selector or dbt_select = "value" (single/double quotes)
 # Handles optional whitespace around =
 _SELECTOR_RE = re.compile(
-    r"""dbt_selector\s*=\s*(?P<quote>['"])(?P<value>.+?)(?P=quote)""",
+    r"""(?:dbt_selector|dbt_select)\s*=\s*(?P<quote>['"])(?P<value>.+?)(?P=quote)""",
     re.DOTALL,
 )
 
 
 def extract_selectors(content: str) -> list:
-    """Extract all dbt_selector string values from a Python file."""
+    """Extract all dbt_selector / dbt_select string values from a Python file."""
     selectors = []
     for m in _SELECTOR_RE.finditer(content):
         val = m.group("value").strip()
@@ -191,7 +192,7 @@ def main():
     progress("scanning", f"Found {len(dag_files)} Airflow DAG files")
 
     # Step 2: Extract selectors and schedules from each DAG
-    progress("extracting", "Extracting dbt_selector values and schedules from DAGs...")
+    progress("extracting", "Extracting dbt_selector/dbt_select values and schedules from DAGs...")
     dag_selectors = {}  # filename -> [selector_strings]
     dag_schedules = {}  # filename -> schedule dict or None
     total_selectors = 0
@@ -207,7 +208,7 @@ def main():
 
     progress(
         "extracting",
-        f"Found {total_selectors} dbt_selector values across {len(dag_selectors)} DAGs",
+        f"Found {total_selectors} dbt_selector/dbt_select values across {len(dag_selectors)} DAGs",
     )
 
     if total_selectors == 0:
