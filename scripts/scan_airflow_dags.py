@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Scan a directory of Airflow DAGs, extract dbt_selector values, resolve them
-against a dbt manifest.json, and output a mapping of model unique_id → DAG files.
+Scan a directory of Airflow DAGs, extract dbt_selector/dbt_select values,
+resolve them against a dbt manifest.json, and output a mapping of
+model unique_id → DAG files.
 
 Usage:
     python scan_airflow_dags.py <dags_directory> <manifest_path>
@@ -15,6 +16,7 @@ Output (stdout): JSON object mapping model unique_ids to lists of DAG info:
 Progress is written to stderr as JSON lines.
 """
 
+import ast
 import json
 import os
 import re
@@ -47,21 +49,391 @@ def find_dag_files(dags_dir: str) -> list:
     return dag_files
 
 
-# Regex to match dbt_selector = "value" or dbt_selector='value'
+# Regex to match dbt_selector or dbt_select = "value" (single/double quotes)
 # Handles optional whitespace around =
 _SELECTOR_RE = re.compile(
-    r"""dbt_selector\s*=\s*(?P<quote>['"])(?P<value>.+?)(?P=quote)""",
+    r"""(?:dbt_selector|dbt_select)\s*=\s*(?P<quote>['"])(?P<value>.+?)(?P=quote)""",
     re.DOTALL,
 )
 
+_SELECTOR_KWARG_NAMES = {"dbt_select", "dbt_selector"}
 
-def extract_selectors(content: str) -> list:
-    """Extract all dbt_selector string values from a Python file."""
+
+def _extract_selectors_regex(content: str) -> list:
+    """Fallback: extract dbt_selector/dbt_select via simple regex."""
     selectors = []
     for m in _SELECTOR_RE.finditer(content):
         val = m.group("value").strip()
         if val:
             selectors.append(val)
+    return selectors
+
+
+# ---------------------------------------------------------------------------
+# AST-based mock-parse for selector extraction
+# ---------------------------------------------------------------------------
+
+
+def _safe_eval_node(node, symtab: dict, loop_vars: dict = None):
+    """
+    Recursively evaluate an AST expression node against a symbol table.
+    Returns str | int | float | list | dict | tuple | None.
+    Returns None for anything we cannot statically resolve.
+    """
+    if loop_vars is None:
+        loop_vars = {}
+
+    if node is None:
+        return None
+
+    # --- Constant literal ---
+    if isinstance(node, ast.Constant):
+        return node.value
+
+    # --- Variable name ---
+    if isinstance(node, ast.Name):
+        if node.id in loop_vars:
+            return loop_vars[node.id]
+        return symtab.get(node.id)
+
+    # --- List / Tuple literal ---
+    if isinstance(node, (ast.List, ast.Tuple)):
+        items = []
+        for elt in node.elts:
+            v = _safe_eval_node(elt, symtab, loop_vars)
+            if v is None:
+                return None
+            items.append(v)
+        return items
+
+    # --- Dict literal ---
+    if isinstance(node, ast.Dict):
+        result = {}
+        for k_node, v_node in zip(node.keys, node.values):
+            if k_node is None:
+                return None  # dict unpacking (**)
+            k = _safe_eval_node(k_node, symtab, loop_vars)
+            v = _safe_eval_node(v_node, symtab, loop_vars)
+            if k is None:
+                return None
+            result[k] = v
+        return result
+
+    # --- Subscript: x["key"] or x[0] ---
+    if isinstance(node, ast.Subscript):
+        target = _safe_eval_node(node.value, symtab, loop_vars)
+        if target is None:
+            return None
+        slc = node.slice
+        # Python 3.9+ uses the node directly, older uses ast.Index
+        if isinstance(slc, ast.Index):
+            slc = slc.value
+        idx = _safe_eval_node(slc, symtab, loop_vars)
+        if idx is None:
+            return None
+        try:
+            return target[idx]
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    # --- f-string ---
+    if isinstance(node, ast.JoinedStr):
+        parts = []
+        for v in node.values:
+            if isinstance(v, ast.Constant):
+                parts.append(str(v.value))
+            elif isinstance(v, ast.FormattedValue):
+                val = _safe_eval_node(v.value, symtab, loop_vars)
+                if val is None:
+                    return None
+                # Handle format spec if present
+                if v.format_spec is not None:
+                    fmt = _safe_eval_node(v.format_spec, symtab, loop_vars)
+                    if fmt is not None:
+                        try:
+                            parts.append(format(val, fmt))
+                            continue
+                        except (ValueError, TypeError):
+                            pass
+                parts.append(str(val))
+            else:
+                return None
+        return "".join(parts)
+
+    # --- Binary operations ---
+    if isinstance(node, ast.BinOp):
+        left = _safe_eval_node(node.left, symtab, loop_vars)
+        right = _safe_eval_node(node.right, symtab, loop_vars)
+        if left is None or right is None:
+            return None
+        # String/list concatenation
+        if isinstance(node.op, ast.Add):
+            try:
+                return left + right
+            except TypeError:
+                return None
+        # % formatting: "format" % value
+        if isinstance(node.op, ast.Mod) and isinstance(left, str):
+            try:
+                return left % right
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    # --- Unary minus (for negative numbers) ---
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        val = _safe_eval_node(node.operand, symtab, loop_vars)
+        if isinstance(val, (int, float)):
+            return -val
+        return None
+
+    # --- Starred dict merge: {**a, **b} handled via ast.Dict with None keys ---
+    # (already handled above in Dict)
+
+    # --- Function calls ---
+    if isinstance(node, ast.Call):
+        # --- .join() ---
+        if (isinstance(node.func, ast.Attribute) and
+                node.func.attr == "join" and len(node.args) == 1):
+            sep = _safe_eval_node(node.func.value, symtab, loop_vars)
+            arg = _safe_eval_node(node.args[0], symtab, loop_vars)
+            if isinstance(sep, str) and isinstance(arg, list):
+                try:
+                    return sep.join(str(x) for x in arg)
+                except TypeError:
+                    return None
+            return None
+
+        # --- .get() ---
+        if (isinstance(node.func, ast.Attribute) and
+                node.func.attr == "get" and 1 <= len(node.args) <= 2):
+            target = _safe_eval_node(node.func.value, symtab, loop_vars)
+            key = _safe_eval_node(node.args[0], symtab, loop_vars)
+            default = None
+            if len(node.args) >= 2:
+                default = _safe_eval_node(node.args[1], symtab, loop_vars)
+            if isinstance(target, dict) and key is not None:
+                return target.get(key, default)
+            return None
+
+        # --- .items() ---
+        if (isinstance(node.func, ast.Attribute) and
+                node.func.attr == "items" and len(node.args) == 0):
+            target = _safe_eval_node(node.func.value, symtab, loop_vars)
+            if isinstance(target, dict):
+                return list(target.items())
+            return None
+
+        # --- .split() ---
+        if (isinstance(node.func, ast.Attribute) and
+                node.func.attr == "split"):
+            target = _safe_eval_node(node.func.value, symtab, loop_vars)
+            if isinstance(target, str):
+                if len(node.args) >= 1:
+                    sep = _safe_eval_node(node.args[0], symtab, loop_vars)
+                    if isinstance(sep, str):
+                        return target.split(sep)
+                else:
+                    return target.split()
+            return None
+
+        # For any other call, we don't try to evaluate it — but we do check
+        # its keyword args for dbt_select/dbt_selector (for DbtTransformationConfig etc.)
+        # That's handled by the finder, not here.
+        return None
+
+    # --- Attribute access (for simple obj.attr on dicts-as-objects) ---
+    if isinstance(node, ast.Attribute):
+        # We only handle this when it's part of a method call (.join, .get, etc.)
+        # Standalone attribute access: try symtab lookup as "obj.attr"
+        if isinstance(node.value, ast.Name):
+            target = symtab.get(node.value.id)
+            if isinstance(target, dict):
+                return target.get(node.attr)
+        return None
+
+    return None
+
+
+def _build_symbol_table(tree: ast.Module) -> dict:
+    """
+    Walk top-level statements to build a symbol table of statically-resolvable
+    values (strings, lists, dicts).
+    """
+    symtab = {}
+
+    for stmt in tree.body:
+        # Simple assignment: NAME = expr
+        if isinstance(stmt, ast.Assign):
+            for target in stmt.targets:
+                if isinstance(target, ast.Name):
+                    val = _safe_eval_node(stmt.value, symtab)
+                    if val is not None:
+                        symtab[target.id] = val
+
+        # Augmented assignment: NAME += expr
+        elif isinstance(stmt, ast.AugAssign):
+            if isinstance(stmt.target, ast.Name) and isinstance(stmt.op, ast.Add):
+                name = stmt.target.id
+                existing = symtab.get(name)
+                addition = _safe_eval_node(stmt.value, symtab)
+                if isinstance(existing, list) and isinstance(addition, list):
+                    symtab[name] = existing + addition
+                elif isinstance(existing, str) and isinstance(addition, str):
+                    symtab[name] = existing + addition
+
+        # For loops at top level: handle list accumulation pattern
+        elif isinstance(stmt, ast.For):
+            _simulate_top_level_for(stmt, symtab)
+
+    return symtab
+
+
+def _simulate_top_level_for(for_node: ast.For, symtab: dict):
+    """
+    Simulate a top-level for loop to handle the list-accumulation pattern:
+        selector_list = []
+        for task in KNOWN_LIST:
+            selector_list += [f"..."]
+    Updates symtab in place.
+    """
+    iterable = _safe_eval_node(for_node.iter, symtab)
+    if iterable is None or not isinstance(iterable, (list, dict)):
+        return
+
+    items = iterable if isinstance(iterable, list) else list(iterable.items())
+
+    for item in items:
+        # Bind loop variable(s)
+        loop_vars = _bind_loop_target(for_node.target, item)
+        if loop_vars is None:
+            continue
+
+        # Walk loop body for augmented assignments that accumulate into symtab lists
+        for body_stmt in for_node.body:
+            if isinstance(body_stmt, ast.AugAssign):
+                if isinstance(body_stmt.target, ast.Name) and isinstance(body_stmt.op, ast.Add):
+                    name = body_stmt.target.id
+                    existing = symtab.get(name)
+                    addition = _safe_eval_node(body_stmt.value, symtab, loop_vars)
+                    if isinstance(existing, list) and isinstance(addition, list):
+                        symtab[name] = existing + addition
+            # Handle: some_list.append(expr)
+            elif isinstance(body_stmt, ast.Expr) and isinstance(body_stmt.value, ast.Call):
+                call = body_stmt.value
+                if (isinstance(call.func, ast.Attribute) and
+                        call.func.attr == "append" and
+                        isinstance(call.func.value, ast.Name) and
+                        len(call.args) == 1):
+                    name = call.func.value.id
+                    existing = symtab.get(name)
+                    val = _safe_eval_node(call.args[0], symtab, loop_vars)
+                    if isinstance(existing, list) and val is not None:
+                        symtab[name] = existing + [val]
+
+
+def _bind_loop_target(target, value) -> dict:
+    """Bind a for-loop target (Name or Tuple) to a value. Returns loop_vars dict or None."""
+    if isinstance(target, ast.Name):
+        return {target.id: value}
+    if isinstance(target, (ast.Tuple, ast.List)):
+        if isinstance(value, (tuple, list)) and len(target.elts) == len(value):
+            result = {}
+            for t, v in zip(target.elts, value):
+                if isinstance(t, ast.Name):
+                    result[t.id] = v
+                else:
+                    return None
+            return result
+    return None
+
+
+def _find_selectors_ast(tree: ast.Module, symtab: dict) -> list:
+    """
+    Walk the AST to find all dbt_select/dbt_selector keyword argument values.
+    Handles for-loops by unrolling iterations over known collections.
+    """
+    selectors = []
+    seen = set()
+
+    def _add_selector(val):
+        if isinstance(val, str) and val.strip() and val not in seen:
+            seen.add(val)
+            selectors.append(val)
+        elif isinstance(val, list):
+            for item in val:
+                if isinstance(item, str) and item.strip() and item not in seen:
+                    seen.add(item)
+                    selectors.append(item)
+
+    def _extract_from_call(call_node, extra_vars=None):
+        """Check a Call node's keyword args for dbt_select/dbt_selector."""
+        for kw in call_node.keywords:
+            if kw.arg in _SELECTOR_KWARG_NAMES:
+                val = _safe_eval_node(kw.value, symtab, extra_vars)
+                _add_selector(val)
+
+    def _walk_stmts(stmts, extra_vars=None):
+        """Walk a list of statements, handling for-loops specially."""
+        for stmt in stmts:
+            _walk_node(stmt, extra_vars)
+
+    def _walk_node(node, extra_vars=None):
+        """Recursively walk AST nodes, extracting selectors from calls."""
+        if isinstance(node, ast.For):
+            # Try to unroll the loop
+            merged = dict(symtab)
+            if extra_vars:
+                merged.update(extra_vars)
+            iterable = _safe_eval_node(node.iter, merged)
+
+            if isinstance(iterable, (list, dict)):
+                items = iterable if isinstance(iterable, list) else list(iterable.items())
+                for item in items:
+                    loop_vars = _bind_loop_target(node.target, item)
+                    if loop_vars is None:
+                        continue
+                    combined = dict(extra_vars or {})
+                    combined.update(loop_vars)
+                    _walk_stmts(node.body, combined)
+                # Also walk else clause
+                _walk_stmts(node.orelse, extra_vars)
+            else:
+                # Can't resolve iterable, walk body anyway (might have hardcoded selectors)
+                _walk_stmts(node.body, extra_vars)
+                _walk_stmts(node.orelse, extra_vars)
+            return
+
+        # Check all Call nodes in this subtree
+        if isinstance(node, ast.Call):
+            _extract_from_call(node, extra_vars)
+
+        # Walk children
+        for child in ast.iter_child_nodes(node):
+            _walk_node(child, extra_vars)
+
+    # Walk all top-level statements
+    _walk_stmts(tree.body)
+    return selectors
+
+
+def extract_selectors(content: str) -> list:
+    """
+    Extract dbt_selector/dbt_select values using AST-based mock-parse.
+    Falls back to regex for files that cannot be parsed.
+    """
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return _extract_selectors_regex(content)
+
+    symtab = _build_symbol_table(tree)
+    selectors = _find_selectors_ast(tree, symtab)
+
+    # Fallback: if AST found nothing, try regex (might catch edge cases)
+    if not selectors:
+        selectors = _extract_selectors_regex(content)
+
     return selectors
 
 
@@ -191,7 +563,7 @@ def main():
     progress("scanning", f"Found {len(dag_files)} Airflow DAG files")
 
     # Step 2: Extract selectors and schedules from each DAG
-    progress("extracting", "Extracting dbt_selector values and schedules from DAGs...")
+    progress("extracting", "Extracting dbt_selector/dbt_select values and schedules from DAGs...")
     dag_selectors = {}  # filename -> [selector_strings]
     dag_schedules = {}  # filename -> schedule dict or None
     total_selectors = 0
@@ -207,7 +579,7 @@ def main():
 
     progress(
         "extracting",
-        f"Found {total_selectors} dbt_selector values across {len(dag_selectors)} DAGs",
+        f"Found {total_selectors} dbt_selector/dbt_select values across {len(dag_selectors)} DAGs",
     )
 
     if total_selectors == 0:
