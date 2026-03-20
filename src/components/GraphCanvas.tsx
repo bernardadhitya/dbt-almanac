@@ -18,6 +18,8 @@ import '@xyflow/react/dist/style.css';
 import { ModelNode } from './ModelNode';
 import { DagGroupNode } from './DagGroupNode';
 import { NodeTooltip } from './NodeTooltip';
+import { DagGroupTooltip } from './DagGroupTooltip';
+import type { DagGroupNodeData } from './DagGroupNode';
 import { buildDagGroupNodes } from '../utils/graph';
 import { ParsedManifest, AirflowDagMap } from '../types';
 
@@ -52,6 +54,9 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
 
   // Tooltip state: the visible tooltip's node ID + anchored position
   const [tooltip, setTooltip] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+
+  // DAG group tooltip state: shown when hovering a dagGroup container header
+  const [dagGroupTooltip, setDagGroupTooltip] = useState<{ data: DagGroupNodeData; x: number; y: number } | null>(null);
 
   // Hovered node for edge highlighting (set instantly, cleared with tooltip dismiss)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -227,6 +232,7 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     dismissTimerRef.current = setTimeout(() => {
       setTooltip(null);
+      setDagGroupTooltip(null);
       setHoveredNodeId(null);
       dismissTimerRef.current = null;
     }, DISMISS_DELAY);
@@ -240,11 +246,38 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
   }, []);
 
   const handleNodeMouseEnter = useCallback((event: React.MouseEvent, node: Node) => {
-    // Skip dagGroup nodes — only highlight real model/source nodes
-    if (node.type === 'dagGroup') return;
-
     // Cancel any pending dismiss (e.g. re-entering same node from tooltip)
     cancelDismiss();
+
+    // DAG group nodes: show DAG group tooltip
+    if (node.type === 'dagGroup') {
+      // Clear any model tooltip
+      setTooltip(null);
+      setHoveredNodeId(null);
+
+      // If already showing for this group, keep it
+      if (dagGroupTooltip && dagGroupTooltip.data === (node.data as DagGroupNodeData)) return;
+
+      // Cancel any pending show
+      if (showTimerRef.current) { clearTimeout(showTimerRef.current); showTimerRef.current = null; }
+
+      const anchorX = event.clientX;
+      const anchorY = event.clientY;
+      const nodeData = node.data as DagGroupNodeData;
+      pendingNodeRef.current = node.id;
+
+      showTimerRef.current = setTimeout(() => {
+        if (pendingNodeRef.current === node.id) {
+          setDagGroupTooltip({ data: nodeData, x: anchorX, y: anchorY });
+        }
+        showTimerRef.current = null;
+      }, SHOW_DELAY);
+      return;
+    }
+
+    // Model/source nodes: show model tooltip
+    // Clear any DAG group tooltip
+    setDagGroupTooltip(null);
 
     // Highlight edges immediately
     setHoveredNodeId(node.id);
@@ -266,21 +299,21 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
       }
       showTimerRef.current = null;
     }, SHOW_DELAY);
-  }, [cancelDismiss, tooltip?.nodeId]);
+  }, [cancelDismiss, tooltip?.nodeId, dagGroupTooltip]);
 
   const handleNodeMouseLeave = useCallback(() => {
     // Cancel any pending show
     if (showTimerRef.current) { clearTimeout(showTimerRef.current); showTimerRef.current = null; }
     pendingNodeRef.current = null;
 
-    if (tooltip) {
-      // Tooltip is showing — use grace period (edges stay highlighted until dismiss)
+    if (tooltip || dagGroupTooltip) {
+      // A tooltip is showing — use grace period
       scheduleDismiss();
     } else {
       // No tooltip yet — clear edge highlighting immediately
       setHoveredNodeId(null);
     }
-  }, [tooltip, scheduleDismiss]);
+  }, [tooltip, dagGroupTooltip, scheduleDismiss]);
 
   // Called when cursor enters the tooltip card
   const handleTooltipMouseEnter = useCallback(() => {
@@ -296,6 +329,7 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
   const handleMoveStart = useCallback(() => {
     clearAllTimers();
     setTooltip(null);
+    setDagGroupTooltip(null);
     setHoveredNodeId(null);
   }, [clearAllTimers]);
 
@@ -344,7 +378,7 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
         />
       </ReactFlow>
 
-      {/* Render tooltip as portal so it's not clipped by React Flow container */}
+      {/* Render model tooltip as portal so it's not clipped by React Flow container */}
       {hoveredSlimNode && tooltip && createPortal(
         <NodeTooltip
           node={hoveredSlimNode}
@@ -353,6 +387,18 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
           onMouseEnter={handleTooltipMouseEnter}
           onMouseLeave={handleTooltipMouseLeave}
           airflowDags={hoveredAirflowDags}
+        />,
+        document.body
+      )}
+
+      {/* Render DAG group tooltip as portal */}
+      {dagGroupTooltip && createPortal(
+        <DagGroupTooltip
+          data={dagGroupTooltip.data}
+          x={dagGroupTooltip.x}
+          y={dagGroupTooltip.y}
+          onMouseEnter={handleTooltipMouseEnter}
+          onMouseLeave={handleTooltipMouseLeave}
         />,
         document.body
       )}
