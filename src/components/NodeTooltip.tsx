@@ -1,6 +1,7 @@
 import { useRef, useLayoutEffect, useState } from 'react';
 import { SlimNode, AirflowDagInfo } from '../types';
 import { DbtIcon, AirflowIcon } from './Icons';
+import { CopyButton } from './CopyButton';
 
 interface NodeTooltipProps {
   node: SlimNode;
@@ -136,7 +137,10 @@ export function NodeTooltip({ node, x, y, onMouseEnter, onMouseLeave, airflowDag
         }`}>
           <div className="font-semibold text-gray-900 dark:text-gray-100 leading-snug flex items-start gap-1.5">
             {!isSource && <DbtIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
-            <span className="min-w-0 break-all">{node.name}</span>
+            <span className="min-w-0">
+              <span className="break-all">{node.name}</span>
+              <span className="inline-flex align-middle ml-1"><CopyButton text={node.name} label={isSource ? 'Source name' : 'Model name'} /></span>
+            </span>
           </div>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
@@ -254,9 +258,10 @@ export function NodeTooltip({ node, x, y, onMouseEnter, onMouseLeave, airflowDag
                     className="flex items-start gap-1.5 text-[11px]"
                   >
                     <AirflowIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                    <div className="min-w-0">
-                      <div className="font-medium text-gray-800 dark:text-gray-200 break-all">
-                        {dag.dagFile.replace(/\.py$/, '')}
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-gray-800 dark:text-gray-200">
+                        <span className="break-all">{dag.dagFile.replace(/\.py$/, '')}</span>
+                        <span className="inline-flex align-middle ml-1"><CopyButton text={dag.dagFile.replace(/\.py$/, '')} label="DAG name" /></span>
                       </div>
                       <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono break-all">
                         {dag.selector}

@@ -1,6 +1,7 @@
 import { useRef, useLayoutEffect, useState } from 'react';
 import cronstrue from 'cronstrue';
 import { AirflowIcon } from './Icons';
+import { CopyButton } from './CopyButton';
 import type { DagScheduleInfo, DagGroupNodeData } from './DagGroupNode';
 
 interface DagGroupTooltipProps {
@@ -109,8 +110,9 @@ export function DagGroupTooltip({ data, x, y, onMouseEnter, onMouseLeave }: DagG
                 {/* DAG filename */}
                 <div className="flex items-start gap-1.5">
                   <AirflowIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  <span className="font-medium text-gray-800 dark:text-gray-200 break-all text-[11px]">
-                    {dagFile.replace(/\.py$/, '')}
+                  <span className="font-medium text-gray-800 dark:text-gray-200 text-[11px]">
+                    <span className="break-all">{dagFile.replace(/\.py$/, '')}</span>
+                    <span className="inline-flex align-middle ml-1"><CopyButton text={dagFile.replace(/\.py$/, '')} label="DAG name" /></span>
                   </span>
                 </div>
 

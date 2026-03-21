@@ -8,6 +8,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { hydrateManifest } from './utils/manifest';
 import { buildGraphData, getFilteredNodeIds, COMPOUND_LAYOUT_MAX_NODES, PERF_MODE_THRESHOLD } from './utils/graph';
 import { PerfModeToast } from './components/PerfModeToast';
+import { CopiedToast } from './components/CopiedToast';
 import { ParsedManifest, FilterState, Settings, LoadingProgress, AirflowDagMap } from './types';
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
@@ -453,6 +454,9 @@ export default function App() {
           <AirflowScanBanner progress={airflowProgress} />
         )}
       </div>
+
+      {/* Global "copied to clipboard" toast */}
+      <CopiedToast />
 
       <SettingsModal
         isOpen={settingsOpen}
