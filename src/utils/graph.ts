@@ -210,6 +210,18 @@ function layoutGraphWithDagGroups(
 ): { nodes: Node[]; edges: Edge[] } {
   if (nodes.length === 0) return { nodes, edges };
 
+  // Compound Dagre layout scales super-linearly — fall back to regular
+  // layout for large graphs to prevent the main thread from blocking long
+  // enough for Electron to kill the renderer.  Check BEFORE computing
+  // clusters to avoid the expensive clustering work as well.
+  const COMPOUND_LAYOUT_MAX_NODES = 80;
+  if (nodes.length > COMPOUND_LAYOUT_MAX_NODES) {
+    console.log(
+      `Compound layout skipped: ${nodes.length} nodes exceeds threshold (${COMPOUND_LAYOUT_MAX_NODES}). Using regular layout.`,
+    );
+    return layoutGraph(nodes, edges);
+  }
+
   const visibleIds = new Set(nodes.map((n) => n.id));
   const clusters = computeDagClusters(visibleIds, airflowDagMap);
 

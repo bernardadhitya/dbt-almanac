@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useTransition } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { Sidebar } from './components/Sidebar';
 import { GraphCanvas } from './components/GraphCanvas';
@@ -115,6 +115,7 @@ export default function App() {
   const [airflowScanning, setAirflowScanning] = useState(false);
   const [airflowProgress, setAirflowProgress] = useState<LoadingProgress | null>(null);
   const [showDagGroups, setShowDagGroups] = useState(false);
+  const [, startTransition] = useTransition();
 
   // Listen for progress events from main process
   useEffect(() => {
@@ -289,7 +290,7 @@ export default function App() {
         onOpenSettings={() => setSettingsOpen(true)}
         hasAirflowDags={!!airflowDagMap}
         showDagGroups={showDagGroups}
-        onShowDagGroupsChange={setShowDagGroups}
+        onShowDagGroupsChange={(v) => startTransition(() => setShowDagGroups(v))}
         listAnimations={settings.listAnimations}
       />
 
