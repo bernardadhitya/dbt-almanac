@@ -2,6 +2,24 @@ import Dagre from '@dagrejs/dagre';
 import { type Node, type Edge, MarkerType } from '@xyflow/react';
 import { ParsedManifest, FilterState, AirflowDagMap, AirflowSchedule } from '../types';
 
+/**
+ * Maximum nodes for compound (DAG-clustered) Dagre layout.
+ * Compound layout scales super-linearly and is the single most expensive
+ * operation — keep this conservative.  Above this we use regular Dagre
+ * layout but still render DAG group container overlays.
+ */
+export const COMPOUND_LAYOUT_MAX_NODES = 50;
+
+/**
+ * Node-count threshold above which GraphCanvas switches to "perf mode":
+ * - Deferred DAG group container computation (requestAnimationFrame)
+ * - DAG group bounding boxes only rebuilt on drag-end, not every frame
+ *
+ * This is intentionally higher than COMPOUND_LAYOUT_MAX_NODES because
+ * buildDagGroupNodes is much cheaper than compound Dagre layout.
+ */
+export const PERF_MODE_THRESHOLD = 80;
+
 export function getFilteredNodeIds(
   manifest: ParsedManifest,
   filters: FilterState
@@ -209,6 +227,15 @@ function layoutGraphWithDagGroups(
   airflowDagMap: AirflowDagMap,
 ): { nodes: Node[]; edges: Edge[] } {
   if (nodes.length === 0) return { nodes, edges };
+
+  // Safety net: even if the caller didn't check, fall back to regular
+  // layout when the graph exceeds the compound layout threshold.
+  if (nodes.length > COMPOUND_LAYOUT_MAX_NODES) {
+    console.log(
+      `Compound layout skipped: ${nodes.length} nodes exceeds threshold (${COMPOUND_LAYOUT_MAX_NODES}). Using regular layout.`,
+    );
+    return layoutGraph(nodes, edges);
+  }
 
   const visibleIds = new Set(nodes.map((n) => n.id));
   const clusters = computeDagClusters(visibleIds, airflowDagMap);

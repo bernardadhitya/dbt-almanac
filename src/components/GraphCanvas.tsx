@@ -20,7 +20,7 @@ import { DagGroupNode } from './DagGroupNode';
 import { NodeTooltip } from './NodeTooltip';
 import { DagGroupTooltip } from './DagGroupTooltip';
 import type { DagGroupNodeData } from './DagGroupNode';
-import { buildDagGroupNodes } from '../utils/graph';
+import { buildDagGroupNodes, PERF_MODE_THRESHOLD } from '../utils/graph';
 import { ParsedManifest, AirflowDagMap } from '../types';
 
 const nodeTypes = { model: ModelNode, dagGroup: DagGroupNode };
@@ -66,15 +66,30 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingNodeRef = useRef<string | null>(null); // node waiting to show
 
-  // Sync nodes from parent when input changes (initial layout or model/filter change)
+  // Performance mode: for large graphs, defer heavy work and skip
+  // per-frame container rebuilds to prevent renderer crashes.
+  const isLargeGraph = inputNodes.length > PERF_MODE_THRESHOLD;
+
+  // Sync nodes from parent when input changes (initial layout or model/filter change).
   useEffect(() => {
     if (showDagGroups && airflowDagMap) {
-      const dagGroups = buildDagGroupNodes(inputNodes, airflowDagMap);
-      setNodes([...dagGroups, ...inputNodes]);
+      if (isLargeGraph) {
+        // Large graph → render base nodes immediately, defer DAG groups
+        setNodes(inputNodes);
+        const rafId = requestAnimationFrame(() => {
+          const dagGroups = buildDagGroupNodes(inputNodes, airflowDagMap);
+          setNodes([...dagGroups, ...inputNodes]);
+        });
+        return () => cancelAnimationFrame(rafId);
+      } else {
+        // Small graph → compute DAG groups synchronously (full experience)
+        const dagGroups = buildDagGroupNodes(inputNodes, airflowDagMap);
+        setNodes([...dagGroups, ...inputNodes]);
+      }
     } else {
       setNodes(inputNodes);
     }
-  }, [inputNodes, showDagGroups, airflowDagMap]);
+  }, [inputNodes, showDagGroups, airflowDagMap, isLargeGraph]);
 
   // Sync edges from parent
   useEffect(() => {
@@ -164,17 +179,23 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
         );
       }
 
-      // Recompute dagGroup bounding boxes whenever any node position changes
-      const hasPositionChange = changes.some((c) => c.type === 'position');
-      if (hasPositionChange && showDagGroups && airflowDagMap) {
-        const modelNodes = next.filter((n) => n.type !== 'dagGroup');
-        const newDagGroups = buildDagGroupNodes(modelNodes, airflowDagMap);
-        next = [...newDagGroups, ...modelNodes];
+      // Recompute dagGroup bounding boxes after position changes.
+      // Small graphs: rebuild on every frame so containers follow in real-time.
+      // Large graphs: only rebuild on drag-end to avoid expensive per-frame work.
+      if (showDagGroups && airflowDagMap) {
+        const shouldRebuild = isLargeGraph
+          ? changes.some((c) => c.type === 'position' && 'dragging' in c && c.dragging === false)
+          : changes.some((c) => c.type === 'position');
+        if (shouldRebuild) {
+          const modelNodes = next.filter((n) => n.type !== 'dagGroup');
+          const newDagGroups = buildDagGroupNodes(modelNodes, airflowDagMap);
+          next = [...newDagGroups, ...modelNodes];
+        }
       }
 
       return next;
     });
-  }, [showDagGroups, airflowDagMap]);
+  }, [showDagGroups, airflowDagMap, isLargeGraph]);
 
   // Fit view on initial load / data change
   useEffect(() => {

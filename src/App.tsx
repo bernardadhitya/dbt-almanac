@@ -6,7 +6,7 @@ import { KeywordSearch } from './components/KeywordSearch';
 import { SearchResults, MatchResult, buildSnippets } from './components/SearchResults';
 import { SettingsModal } from './components/SettingsModal';
 import { hydrateManifest } from './utils/manifest';
-import { buildGraphData, getFilteredNodeIds } from './utils/graph';
+import { buildGraphData, getFilteredNodeIds, COMPOUND_LAYOUT_MAX_NODES } from './utils/graph';
 import { ParsedManifest, FilterState, Settings, LoadingProgress, AirflowDagMap } from './types';
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
@@ -263,12 +263,21 @@ export default function App() {
 
   const { nodes, edges } = useMemo(() => {
     if (!manifest) return { nodes: [], edges: [] };
-    // When DAG groups are on, pass airflowDagMap so the layout engine
-    // clusters member nodes together (dagre compound graph).
-    const dagMapForLayout = showDagGroups ? airflowDagMap : null;
-    return buildGraphData(manifest, filteredIds, filters.selectedModel, highlightedIds, dagMapForLayout);
-    // Note: DAG group container nodes are computed inside GraphCanvas
-    // from live node positions so they follow nodes when dragged.
+    // For small graphs with DAG groups enabled, use compound (clustered)
+    // Dagre layout so grouped nodes sit together.  For large graphs the
+    // compound layout is too expensive and would crash the renderer, so
+    // we fall back to regular layout and let GraphCanvas add DAG group
+    // containers as a lightweight overlay instead.
+    const nodeCount = filteredIds ? filteredIds.size : 0;
+    const useCompoundLayout =
+      showDagGroups && !!airflowDagMap && nodeCount <= COMPOUND_LAYOUT_MAX_NODES;
+    return buildGraphData(
+      manifest,
+      filteredIds,
+      filters.selectedModel,
+      highlightedIds,
+      useCompoundLayout ? airflowDagMap : null,
+    );
   }, [manifest, filteredIds, filters.selectedModel, highlightedIds, showDagGroups, airflowDagMap]);
 
   const progressPercent = progress
