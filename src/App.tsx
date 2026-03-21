@@ -6,7 +6,8 @@ import { KeywordSearch } from './components/KeywordSearch';
 import { SearchResults, MatchResult, buildSnippets } from './components/SearchResults';
 import { SettingsModal } from './components/SettingsModal';
 import { hydrateManifest } from './utils/manifest';
-import { buildGraphData, getFilteredNodeIds, COMPOUND_LAYOUT_MAX_NODES } from './utils/graph';
+import { buildGraphData, getFilteredNodeIds, COMPOUND_LAYOUT_MAX_NODES, PERF_MODE_THRESHOLD } from './utils/graph';
+import { PerfModeToast } from './components/PerfModeToast';
 import { ParsedManifest, FilterState, Settings, LoadingProgress, AirflowDagMap } from './types';
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
@@ -280,6 +281,9 @@ export default function App() {
     );
   }, [manifest, filteredIds, filters.selectedModel, highlightedIds, showDagGroups, airflowDagMap]);
 
+  // Detect when performance optimizations are active so we can notify the user
+  const perfModeActive = showDagGroups && !!airflowDagMap && nodes.length > COMPOUND_LAYOUT_MAX_NODES;
+
   const progressPercent = progress
     ? Math.min(((STEP_ORDER.indexOf(progress.step) + 1) / STEP_ORDER.length) * 100, 100)
     : 0;
@@ -440,6 +444,9 @@ export default function App() {
             )}
           </div>
         )}
+
+        {/* Performance mode toast */}
+        <PerfModeToast active={perfModeActive} />
 
         {/* Airflow DAG scanning progress banner */}
         {airflowScanning && (
