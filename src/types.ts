@@ -52,9 +52,7 @@ export interface FilterState {
 export interface Settings {
   projectPath: string;
   airflowDagsPath: string;
-  theme: 'light' | 'dark';
   edgeAnimations: boolean;
-  listAnimations: boolean;
 }
 
 export interface AirflowSchedule {
