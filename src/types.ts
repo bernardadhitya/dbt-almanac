@@ -53,7 +53,24 @@ export interface Settings {
   projectPath: string;
   airflowDagsPath: string;
   edgeAnimations: boolean;
+  autoUpdate: boolean;
 }
+
+export interface UpdateInfo {
+  version: string;
+  releaseNotes: string;
+  downloadUrl: string;
+  htmlUrl: string;
+}
+
+export type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'up-to-date'; currentVersion: string }
+  | { state: 'available'; info: UpdateInfo }
+  | { state: 'downloading'; progress: number }
+  | { state: 'ready'; info: UpdateInfo }
+  | { state: 'error'; message: string; htmlUrl?: string };
 
 export interface AirflowSchedule {
   type: 'cron' | 'preset' | 'timedelta' | 'dataset' | 'none' | 'unknown';
@@ -85,6 +102,11 @@ declare global {
       setSettings: (settings: Partial<Settings>) => Promise<boolean>;
       onManifestProgress: (callback: (data: LoadingProgress) => void) => () => void;
       onAirflowProgress: (callback: (data: LoadingProgress) => void) => () => void;
+      getAppVersion: () => Promise<string>;
+      checkForUpdate: () => Promise<{ available: boolean; info?: UpdateInfo; error?: string }>;
+      downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
+      installUpdate: () => Promise<{ success: boolean; error?: string; needsManual?: boolean; htmlUrl?: string }>;
+      onUpdateProgress: (callback: (data: { percent: number }) => void) => () => void;
     };
   }
 }
