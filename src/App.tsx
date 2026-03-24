@@ -9,7 +9,8 @@ import { hydrateManifest } from './utils/manifest';
 import { buildGraphData, getFilteredNodeIds, COMPOUND_LAYOUT_MAX_NODES, PERF_MODE_THRESHOLD } from './utils/graph';
 import { PerfModeToast } from './components/PerfModeToast';
 import { CopiedToast } from './components/CopiedToast';
-import { ParsedManifest, FilterState, Settings, LoadingProgress, AirflowDagMap } from './types';
+import { UpdateToast } from './components/UpdateToast';
+import { ParsedManifest, FilterState, Settings, LoadingProgress, AirflowDagMap, UpdateStatus, UpdateInfo } from './types';
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
@@ -96,7 +97,7 @@ const STEP_LABELS: Record<string, string> = {
 const STEP_ORDER = ['reading', 'parsing', 'extracting', 'mapping', 'finalizing', 'done'];
 
 export default function App() {
-  const [settings, setSettings] = useState<Settings>({ projectPath: '', airflowDagsPath: '', edgeAnimations: true });
+  const [settings, setSettings] = useState<Settings>({ projectPath: '', airflowDagsPath: '', edgeAnimations: true, autoUpdate: true });
   const [manifest, setManifest] = useState<ParsedManifest | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     selectedModel: null,
@@ -118,6 +119,11 @@ export default function App() {
   const [airflowProgress, setAirflowProgress] = useState<LoadingProgress | null>(null);
   const [showDagGroups, setShowDagGroups] = useState(false);
 
+  // Update state
+  const [appVersion, setAppVersion] = useState('0.0.0');
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle' });
+  const [updateToastInfo, setUpdateToastInfo] = useState<UpdateInfo | null>(null);
+
   // Listen for progress events from main process
   useEffect(() => {
     if (!isElectron) return;
@@ -136,6 +142,20 @@ export default function App() {
     return cleanup;
   }, []);
 
+  // Listen for update download progress
+  useEffect(() => {
+    if (!isElectron) return;
+    const cleanup = window.electronAPI.onUpdateProgress((data) => {
+      setUpdateStatus((prev) => {
+        if (prev.state === 'downloading') {
+          return { ...prev, progress: data.percent };
+        }
+        return prev;
+      });
+    });
+    return cleanup;
+  }, []);
+
   // Load settings on mount
   useEffect(() => {
     if (isElectron) {
@@ -143,6 +163,7 @@ export default function App() {
         setSettings(s);
         if (s.projectPath) loadManifest(s.projectPath, s.airflowDagsPath);
       });
+      window.electronAPI.getAppVersion().then(setAppVersion);
     }
   }, []);
 
@@ -156,6 +177,87 @@ export default function App() {
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
   }, []);
+
+  // Check for updates on mount (after settings are loaded)
+  useEffect(() => {
+    if (!isElectron) return;
+    // Small delay to let the app settle before hitting the network
+    const timer = setTimeout(() => {
+      checkForUpdate(true);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const checkForUpdate = useCallback(async (isAutomatic = false) => {
+    if (!isElectron) return;
+    setUpdateStatus({ state: 'checking' });
+    try {
+      const result = await window.electronAPI.checkForUpdate();
+      if (result.error) {
+        // On automatic check, don't show errors (e.g. no internet)
+        if (isAutomatic) {
+          setUpdateStatus({ state: 'idle' });
+        } else {
+          setUpdateStatus({ state: 'error', message: result.error });
+        }
+        return;
+      }
+      if (result.available && result.info) {
+        setUpdateStatus({ state: 'available', info: result.info });
+        setUpdateToastInfo(result.info);
+        // If auto-update is on, start downloading immediately
+        const currentSettings = await window.electronAPI.getSettings();
+        if (currentSettings.autoUpdate) {
+          applyUpdate(result.info);
+        }
+      } else {
+        const currentVersion = await window.electronAPI.getAppVersion();
+        setUpdateStatus({ state: 'up-to-date', currentVersion });
+      }
+    } catch (err: any) {
+      if (isAutomatic) {
+        setUpdateStatus({ state: 'idle' });
+      } else {
+        setUpdateStatus({ state: 'error', message: err.message });
+      }
+    }
+  }, []);
+
+  const applyUpdate = useCallback(async (info?: UpdateInfo) => {
+    if (!isElectron) return;
+
+    // Step 1: Download
+    setUpdateStatus({ state: 'downloading', progress: 0 });
+    const downloadResult = await window.electronAPI.downloadUpdate();
+    if (!downloadResult.success) {
+      const currentInfo = info || (updateStatus.state === 'available' ? updateStatus.info : undefined);
+      setUpdateStatus({
+        state: 'error',
+        message: downloadResult.error || 'Download failed.',
+        htmlUrl: currentInfo?.htmlUrl,
+      });
+      return;
+    }
+
+    // Step 2: Install
+    setUpdateStatus({ state: 'downloading', progress: 100 });
+    const installResult = await window.electronAPI.installUpdate();
+    if (!installResult.success) {
+      setUpdateStatus({
+        state: 'error',
+        message: installResult.error || 'Installation failed.',
+        htmlUrl: installResult.htmlUrl,
+      });
+      return;
+    }
+
+    // Success!
+    const resolvedInfo = info || (updateStatus.state === 'available' ? updateStatus.info : undefined);
+    setUpdateStatus({
+      state: 'ready',
+      info: resolvedInfo || { version: 'latest', releaseNotes: '', downloadUrl: '', htmlUrl: '' },
+    });
+  }, [updateStatus]);
 
   const scanAirflowDags = useCallback(async (dagsPath: string, projectPath: string) => {
     if (!isElectron || !dagsPath || !projectPath) return;
@@ -235,6 +337,10 @@ export default function App() {
     setAirflowDagMap(null);
     await handleChangeSettings({ airflowDagsPath: '' });
   }, [handleChangeSettings]);
+
+  const handleOpenReleaseUrl = useCallback((url: string) => {
+    window.open(url, '_blank');
+  }, []);
 
   // Compute which visible node IDs match the keyword in their raw_code
   const { filteredIds, highlightedIds } = useMemo(() => {
@@ -455,6 +561,12 @@ export default function App() {
         {/* Performance mode toast */}
         <PerfModeToast active={perfModeActive} />
 
+        {/* Update available toast */}
+        <UpdateToast
+          info={updateToastInfo}
+          onViewDetails={() => setSettingsOpen(true)}
+        />
+
         {/* Airflow DAG scanning progress banner */}
         {airflowScanning && (
           <AirflowScanBanner progress={airflowProgress} />
@@ -474,6 +586,11 @@ export default function App() {
         onClearAirflowDags={handleClearAirflowDags}
         airflowDagCount={airflowDagCount}
         airflowScanning={airflowScanning}
+        updateStatus={updateStatus}
+        appVersion={appVersion}
+        onCheckForUpdate={() => checkForUpdate(false)}
+        onApplyUpdate={() => applyUpdate()}
+        onOpenReleaseUrl={handleOpenReleaseUrl}
       />
     </div>
   );
