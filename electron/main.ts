@@ -52,12 +52,16 @@ function sendProgress(step: string, detail: string) {
   }
 }
 
-// Resolve Python script paths (works in both dev and packaged)
-function getScriptPath(scriptName: string): string {
+// Spawn a Python script — in dev mode, runs `python3 script.py`;
+// in packaged mode, runs the compiled PyInstaller binary directly.
+function spawnScript(scriptName: string, args: string[]) {
+  const baseName = scriptName.replace(/\.py$/, '');
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'scripts', scriptName);
+    const binaryPath = path.join(process.resourcesPath, 'scripts', baseName);
+    return spawn(binaryPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   }
-  return path.join(__dirname, '..', 'scripts', scriptName);
+  const scriptPath = path.join(__dirname, '..', 'scripts', scriptName);
+  return spawn('python3', [scriptPath, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
 // IPC Handlers
@@ -72,14 +76,11 @@ ipcMain.handle('select-directory', async () => {
 
 ipcMain.handle('read-manifest', async (_event, projectPath: string) => {
   const manifestPath = path.join(projectPath, 'target', 'manifest.json');
-  const scriptPath = getScriptPath('parse_manifest.py');
 
   return new Promise((resolve) => {
-    sendProgress('reading', 'Starting Python parser...');
+    sendProgress('reading', 'Starting manifest parser...');
 
-    const proc = spawn('python3', [scriptPath, manifestPath], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const proc = spawnScript('parse_manifest.py', [manifestPath]);
 
     const stdoutChunks: Buffer[] = [];
     let stderrBuffer = '';
@@ -135,7 +136,6 @@ ipcMain.handle('read-manifest', async (_event, projectPath: string) => {
 
 ipcMain.handle('scan-airflow-dags', async (_event, dagsPath: string, projectPath: string) => {
   const manifestPath = path.join(projectPath, 'target', 'manifest.json');
-  const scriptPath = getScriptPath('scan_airflow_dags.py');
 
   return new Promise((resolve) => {
     const sendAirflowProgress = (step: string, detail: string) => {
@@ -146,9 +146,7 @@ ipcMain.handle('scan-airflow-dags', async (_event, dagsPath: string, projectPath
 
     sendAirflowProgress('scanning', 'Starting Airflow DAG scanner...');
 
-    const proc = spawn('python3', [scriptPath, dagsPath, manifestPath], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const proc = spawnScript('scan_airflow_dags.py', [dagsPath, manifestPath]);
 
     const stdoutChunks: Buffer[] = [];
     let stderrBuffer = '';

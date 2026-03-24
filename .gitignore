@@ -12,3 +12,10 @@ node_modules
 .claude
 __pycache__
 .DS_Store
+
+# Build artifacts
+build/scripts/
+.pyinstaller-work/
+.pyinstaller-dist/
+release/
+*.spec

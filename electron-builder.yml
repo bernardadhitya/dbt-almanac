@@ -2,9 +2,22 @@ appId: com.almanac.app
 productName: Almanac
 directories:
   output: release
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+extraResources:
+  # Compiled Python binaries (built by scripts/build-macos.sh via PyInstaller)
+  - from: build/scripts/
+    to: scripts/
+    filter:
+      - "**/*"
 mac:
   icon: build/icon.icns
   category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
 win:
   icon: build/icon.ico
 linux:
