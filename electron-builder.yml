@@ -1,0 +1,11 @@
+appId: com.almanac.app
+productName: Almanac
+directories:
+  output: release
+mac:
+  icon: build/icon.icns
+  category: public.app-category.developer-tools
+win:
+  icon: build/icon.ico
+linux:
+  icon: build/icon.png

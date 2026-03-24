@@ -143,62 +143,6 @@ export function SettingsModal({
           </div>
         </div>
 
-        {/* List Shuffle Animations Toggle */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            List Shuffle Animation
-          </label>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-            Animate model list items when filtering. Disable if you experience lag with large model lists.
-          </p>
-          <div className="flex items-center gap-3">
-            <span className={`text-sm ${!settings.listAnimations ? 'text-gray-900 dark:text-gray-100 font-medium' : 'text-gray-400'}`}>
-              Off
-            </span>
-            <button
-              onClick={() => onChangeSettings({ listAnimations: !settings.listAnimations })}
-              className={`relative w-12 h-6 rounded-full transition-colors ${
-                settings.listAnimations ? 'bg-blue-600' : 'bg-gray-300'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                  settings.listAnimations ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              />
-            </button>
-            <span className={`text-sm ${settings.listAnimations ? 'text-gray-900 dark:text-gray-100 font-medium' : 'text-gray-400'}`}>
-              On
-            </span>
-          </div>
-        </div>
-
-        {/* Theme Toggle */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Theme
-          </label>
-          <div className="flex items-center gap-3">
-            <span className={`text-sm ${settings.theme === 'light' ? 'text-gray-900 dark:text-gray-100 font-medium' : 'text-gray-400'}`}>
-              Light
-            </span>
-            <button
-              onClick={() => onChangeSettings({ theme: settings.theme === 'light' ? 'dark' : 'light' })}
-              className={`relative w-12 h-6 rounded-full transition-colors ${
-                settings.theme === 'dark' ? 'bg-blue-600' : 'bg-gray-300'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                  settings.theme === 'dark' ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              />
-            </button>
-            <span className={`text-sm ${settings.theme === 'dark' ? 'text-gray-900 dark:text-gray-100 font-medium' : 'text-gray-400'}`}>
-              Dark
-            </span>
-          </div>
-        </div>
       </div>
     </div>
   );

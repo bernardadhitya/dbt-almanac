@@ -75,8 +75,7 @@ export function Sidebar({
       style={{ width }}
     >
       {/* Header */}
-      <div className="px-4 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between app-drag">
-        <h1 className="text-base font-bold text-gray-900 dark:text-gray-100">Almanac</h1>
+      <div className="px-4 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-end app-drag">
         <button
           onClick={onOpenSettings}
           className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors app-no-drag"

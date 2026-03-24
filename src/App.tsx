@@ -96,7 +96,7 @@ const STEP_LABELS: Record<string, string> = {
 const STEP_ORDER = ['reading', 'parsing', 'extracting', 'mapping', 'finalizing', 'done'];
 
 export default function App() {
-  const [settings, setSettings] = useState<Settings>({ projectPath: '', airflowDagsPath: '', theme: 'light', edgeAnimations: true, listAnimations: true });
+  const [settings, setSettings] = useState<Settings>({ projectPath: '', airflowDagsPath: '', edgeAnimations: true });
   const [manifest, setManifest] = useState<ParsedManifest | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     selectedModel: null,
@@ -146,10 +146,16 @@ export default function App() {
     }
   }, []);
 
-  // Apply theme
+  // Follow system theme (light/dark) automatically
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', settings.theme === 'dark');
-  }, [settings.theme]);
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = (e: MediaQueryListEvent | MediaQueryList) => {
+      document.documentElement.classList.toggle('dark', e.matches);
+    };
+    apply(mq); // set on mount
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
 
   const scanAirflowDags = useCallback(async (dagsPath: string, projectPath: string) => {
     if (!isElectron || !dagsPath || !projectPath) return;
@@ -304,7 +310,7 @@ export default function App() {
         hasAirflowDags={!!airflowDagMap}
         showDagGroups={showDagGroups}
         onShowDagGroupsChange={setShowDagGroups}
-        listAnimations={settings.listAnimations}
+        listAnimations
       />
 
       <div className="flex-1 relative">
