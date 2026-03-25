@@ -95,15 +95,13 @@ The scanner walks your Airflow DAGs directory, identifies Python files containin
 
 ### Performance Optimization
 
-Almanac uses a two-tier threshold system to keep the app responsive:
+To keep the app responsive when processing large graphs, we calculate the amount of the nodes and render it accordingly:
 
 | Graph Size | Layout | DAG Group Rendering | Drag Behavior |
 |-----------|--------|-------------------|---------------|
 | ≤50 nodes | Compound Dagre (clustered) | Synchronous | Real-time container following |
 | 51–80 nodes | Regular Dagre | Synchronous | Real-time container following |
 | 80+ nodes | Regular Dagre | Deferred (requestAnimationFrame) | Snap on drag end |
-
-https://github.com/user-attachments/assets/c58a3dfd-e41c-4f1a-bd86-0d924fc307b3
 
 ---
 
