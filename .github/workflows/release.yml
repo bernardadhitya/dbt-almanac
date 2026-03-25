@@ -16,11 +16,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: macos-latest
-            arch: arm64
-          - runner: macos-13
-            arch: x64
-    runs-on: ${{ matrix.runner }}
+          - arch: arm64
+            pyinstaller_arch: ""
+          - arch: x64
+            pyinstaller_arch: "arch -x86_64"
+    runs-on: macos-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -42,8 +42,38 @@ jobs:
       - name: Stamp version in package.json
         run: npm version ${{ inputs.version }} --no-git-tag-version
 
-      - name: Build macOS app
-        run: npm run dist:mac
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Compile Python scripts
+        run: |
+          WORK=".pyinstaller-work"
+          DIST=".pyinstaller-dist"
+          rm -rf "$WORK" "$DIST"
+          mkdir -p "$WORK" "$DIST" build/scripts
+
+          ${{ matrix.pyinstaller_arch }} python3 -m PyInstaller \
+            --onefile --clean --name parse_manifest \
+            --distpath "$DIST" --workpath "$WORK/parse_manifest" \
+            --specpath "$WORK" --log-level WARN \
+            scripts/parse_manifest.py
+
+          ${{ matrix.pyinstaller_arch }} python3 -m PyInstaller \
+            --onefile --clean --name scan_airflow_dags \
+            --paths scripts --hidden-import dbt_select \
+            --distpath "$DIST" --workpath "$WORK/scan_airflow_dags" \
+            --specpath "$WORK" --log-level WARN \
+            scripts/scan_airflow_dags.py
+
+          cp "$DIST/parse_manifest" build/scripts/
+          cp "$DIST/scan_airflow_dags" build/scripts/
+          rm -rf "$WORK" "$DIST"
+
+      - name: Build frontend and Electron
+        run: npm run build
+
+      - name: Package macOS app
+        run: npx electron-builder --mac --${{ matrix.arch }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
