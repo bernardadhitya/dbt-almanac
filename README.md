@@ -17,7 +17,7 @@
 
 ## What is Almanac?
 
-![Demo Screenshot](.github/assets/dbt-almanac-demo-screenshot.png)
+https://github.com/user-attachments/assets/5c083d62-d5b9-4cf1-8f77-ba91f6b5a451
 
 Almanac reads your dbt project's `manifest.json` and renders an interactive dependency graph; letting you explore how models and sources connect, search through SQL code, and optionally overlay Airflow DAG ownership and schedules on top.
 
