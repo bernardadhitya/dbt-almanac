@@ -34,7 +34,7 @@ Almanac reads your dbt project's `manifest.json` and renders an interactive depe
 
 Download the latest release here:
 
-👉 **[Download Almanac (macOS)](https://github.com/bernardadhitya/dbt-almanac/releases/latest)**
+👉 **[Download Almanac - macOS (Apple Silicon and Intel supoorted)](https://github.com/bernardadhitya/dbt-almanac/releases/latest)**
 
 > **Note:** Since the app is not code-signed, macOS may show a warning on first launch. Right-click the app and select **Open**, then click **Open** again in the dialog. You only need to do this once. Alternatively, run:
 ```bash
