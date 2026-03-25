@@ -334,9 +334,10 @@ ipcMain.handle('check-for-update', async () => {
       return { available: false };
     }
 
-    // Find the macOS .zip asset (electron-builder produces Almanac-X.Y.Z-mac.zip or similar)
+    // Find the macOS .zip asset matching the current architecture (arm64 or x64)
+    const arch = process.arch; // "arm64" on Apple Silicon, "x64" on Intel
     const zipAsset = (release.assets || []).find((a: any) =>
-      a.name.endsWith('.zip') && (a.name.includes('mac') || a.name.includes('darwin'))
+      a.name.endsWith('.zip') && a.name.includes(arch)
     );
 
     if (!zipAsset) {
