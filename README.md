@@ -102,9 +102,3 @@ To keep the app responsive when processing large graphs, we calculate the amount
 | ≤50 nodes | Compound Dagre (clustered) | Synchronous | Real-time container following |
 | 51–80 nodes | Regular Dagre | Synchronous | Real-time container following |
 | 80+ nodes | Regular Dagre | Deferred (requestAnimationFrame) | Snap on drag end |
-
----
-
-## License
-
-This project is proprietary. All rights reserved.
