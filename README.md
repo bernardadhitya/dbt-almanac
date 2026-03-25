@@ -9,14 +9,15 @@
 </p>
 
 <p align="center">
-  Built with Electron &middot; React &middot; React Flow &middot; Dagre &middot; Tailwind CSS
+  <a href="https://github.com/dbt-labs/dbt-core"><img src="https://img.shields.io/badge/built%20for-dbt--core-FF694B?logo=dbt&logoColor=white" alt="dbt-core" /></a>
+  <a href="https://github.com/apache/airflow"><img src="https://img.shields.io/badge/built%20for-Apache%20Airflow-017CEE?logo=apacheairflow&logoColor=white" alt="Apache Airflow" /></a>
 </p>
 
 ---
 
 ## What is Almanac?
 
-![Demo Screenshot](.github/assets/dbt-almanac-demo-screenshot.png)
+https://github.com/user-attachments/assets/93614cec-74cb-40b6-89ad-1a1f7751db16
 
 Almanac reads your dbt project's `manifest.json` and renders an interactive dependency graph; letting you explore how models and sources connect, search through SQL code, and optionally overlay Airflow DAG ownership and schedules on top.
 
@@ -26,41 +27,21 @@ Almanac reads your dbt project's `manifest.json` and renders an interactive depe
 - **Model & source search**; fuzzy search across all models with relevance scoring, plus full-text keyword search through raw SQL code with highlighted snippets
 - **Airflow DAG integration**; scan an Airflow DAGs directory to see which DAGs invoke each model, displayed as container overlays with schedule information (cron expressions converted to human-readable text)
 - **AST-based selector extraction**; uses Python's `ast` module to statically evaluate dbt selectors from Airflow DAG files, handling variables, f-strings, dict lookups, list joins, and loops
-- **Adaptive performance**; two-tier threshold system automatically simplifies layout and rendering for large graphs to prevent crashes while preserving the full experience for small graphs
 
 ---
 
-## Getting Started
+## Installation
 
-### Prerequisites
+Download the latest release here:
 
-- **Node.js** (v18+) and **npm**
-- **Python 3** (`python3` must be in your PATH)
+👉 **[Download Almanac (macOS)](https://github.com/bernardadhitya/dbt-almanac/releases/latest)**
 
-### Install
-
+> **Note:** Since the app is not code-signed, macOS may show a warning on first launch. Right-click the app and select **Open**, then click **Open** again in the dialog. You only need to do this once. Alternatively, run:
 ```bash
-git clone https://github.com/<your-org>/dbt-almanac.git
-cd dbt-almanac
-npm install
+  xattr -cr /Applications/Almanac.app
 ```
 
-### Development
-
-```bash
-npm run dev
-```
-
-This starts Vite's dev server, compiles the Electron TypeScript in watch mode, and launches the app. Changes to React components hot-reload instantly.
-
-### Production Build
-
-```bash
-npm run build              # Build React + Electron TypeScript
-npm run electron:build     # Package as a native app (macOS/Windows/Linux)
-```
-
-The packaged app is output to the `release/` directory.
+The app includes automatic update checking; when a new version is available, you'll be notified and can update directly from Settings.
 
 ---
 
@@ -98,22 +79,6 @@ dbt-almanac/
 
 ---
 
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| **Desktop shell** | Electron 34 |
-| **Frontend** | React 18, TypeScript 5 |
-| **Graph visualization** | React Flow (@xyflow/react) |
-| **Graph layout** | Dagre (@dagrejs/dagre) |
-| **Styling** | Tailwind CSS 4 |
-| **Build tool** | Vite 6 |
-| **Persistent storage** | electron-store |
-| **Backend scripts** | Python 3 (ast, json) |
-| **Packaging** | electron-builder |
-
----
-
 ## How It Works
 
 ### Manifest Parsing
@@ -130,18 +95,10 @@ The scanner walks your Airflow DAGs directory, identifies Python files containin
 
 ### Performance Optimization
 
-Almanac uses a two-tier threshold system to keep the app responsive:
+To keep the app responsive when processing large graphs, we calculate the amount of the nodes and render it accordingly:
 
 | Graph Size | Layout | DAG Group Rendering | Drag Behavior |
 |-----------|--------|-------------------|---------------|
 | ≤50 nodes | Compound Dagre (clustered) | Synchronous | Real-time container following |
 | 51–80 nodes | Regular Dagre | Synchronous | Real-time container following |
 | 80+ nodes | Regular Dagre | Deferred (requestAnimationFrame) | Snap on drag end |
-
-https://github.com/user-attachments/assets/c58a3dfd-e41c-4f1a-bd86-0d924fc307b3
-
----
-
-## License
-
-This project is proprietary. All rights reserved.
