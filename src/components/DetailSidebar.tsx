@@ -79,20 +79,20 @@ function TestIcon() {
 function TestRow({ test, level }: { test: TestInfo; level: 'column' | 'table' }) {
   const { description, isKnown } = getTestDescription(test.name, test.kwargs, level);
   return (
-    <div className="flex items-start gap-2 py-1.5 px-2.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50">
+    <div className="flex items-start gap-2 py-1.5 px-2.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 overflow-hidden">
       <TestIcon />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 overflow-hidden">
         {isKnown ? (
           <>
-            <p className="text-[11px] text-gray-700 dark:text-gray-300 leading-relaxed">
+            <p className="text-[11px] text-gray-700 dark:text-gray-300 leading-relaxed break-words">
               {description}
             </p>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5">
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5 truncate" title={test.name}>
               {test.name}
             </p>
           </>
         ) : (
-          <p className="text-[11px] text-gray-700 dark:text-gray-300 font-mono">
+          <p className="text-[11px] text-gray-700 dark:text-gray-300 font-mono break-all">
             {test.name}
             {Object.keys(test.kwargs).length > 0 && (
               <span className="text-gray-400 dark:text-gray-500">
