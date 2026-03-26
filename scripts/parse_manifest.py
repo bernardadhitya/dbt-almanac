@@ -187,6 +187,91 @@ def main():
     # so we read the YAML files directly to get source_format / source_uris.
     enrich_sources_from_yaml(manifest_path, sources, source_nodes)
 
+    # Step 4c: Extract tests and attach to models/sources
+    progress("extracting", "Extracting dbt tests...")
+
+    test_count = 0
+    # Build a lookup: node_uid -> { "table": [{name, kwargs}, ...], "columns": { col_name: [{name, kwargs}, ...] } }
+    tests_by_node = {}
+
+    # Keys to exclude from kwargs display (always present, not informative)
+    KWARGS_EXCLUDE = {"column_name", "model"}
+
+    for uid, node in nodes.items():
+        if node.get("resource_type") != "test":
+            continue
+
+        test_meta = node.get("test_metadata") or {}
+        test_base_name = test_meta.get("name", node.get("name", uid))
+        test_namespace = test_meta.get("namespace")
+        # Prepend package namespace if present (e.g. "dbt_expectations.expect_column_values_to_be_between")
+        test_name = f"{test_namespace}.{test_base_name}" if test_namespace else test_base_name
+        raw_kwargs = test_meta.get("kwargs") or {}
+        column_name = raw_kwargs.get("column_name")
+
+        # Filter out non-informative kwargs
+        display_kwargs = {
+            k: v for k, v in raw_kwargs.items()
+            if k not in KWARGS_EXCLUDE and v is not None and v != ""
+        }
+
+        test_entry = {"name": test_name, "kwargs": display_kwargs}
+
+        # Find which model/source this test depends on
+        depends_on = node.get("depends_on", {}).get("nodes", [])
+        # Also check attached_node field (available in newer dbt versions)
+        attached = node.get("attached_node")
+        target_ids = []
+        if attached and attached in all_node_ids:
+            target_ids = [attached]
+        else:
+            target_ids = [d for d in depends_on if d in all_node_ids]
+
+        for target_id in target_ids:
+            if target_id not in tests_by_node:
+                tests_by_node[target_id] = {"table": [], "columns": {}}
+
+            if column_name:
+                # Column-level test
+                if column_name not in tests_by_node[target_id]["columns"]:
+                    tests_by_node[target_id]["columns"][column_name] = []
+                tests_by_node[target_id]["columns"][column_name].append(test_entry)
+            else:
+                # Table-level test
+                tests_by_node[target_id]["table"].append(test_entry)
+
+            test_count += 1
+
+    # Attach tests to models
+    for uid, test_info in tests_by_node.items():
+        target = models.get(uid) or source_nodes.get(uid)
+        if not target:
+            continue
+        if test_info["table"]:
+            # Sort by test name, deduplicate by (name + kwargs)
+            seen = set()
+            unique_tests = []
+            for t in sorted(test_info["table"], key=lambda x: x["name"]):
+                key = (t["name"], json.dumps(t["kwargs"], sort_keys=True))
+                if key not in seen:
+                    seen.add(key)
+                    unique_tests.append(t)
+            target["tests"] = unique_tests
+        if test_info["columns"]:
+            col_tests = {}
+            for col, tests in test_info["columns"].items():
+                seen = set()
+                unique_tests = []
+                for t in sorted(tests, key=lambda x: x["name"]):
+                    key = (t["name"], json.dumps(t["kwargs"], sort_keys=True))
+                    if key not in seen:
+                        seen.add(key)
+                        unique_tests.append(t)
+                col_tests[col] = unique_tests
+            target["column_tests"] = col_tests
+
+    progress("extracting", f"Found {test_count:,} tests across {len(tests_by_node):,} nodes")
+
     # Step 5: Build filtered parent/child maps (only models and sources)
     progress("mapping", f"Building dependency maps for {len(all_node_ids):,} nodes...")
 

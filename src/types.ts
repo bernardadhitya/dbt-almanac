@@ -3,6 +3,11 @@ export interface ColumnInfo {
   type: string;
 }
 
+export interface TestInfo {
+  name: string;
+  kwargs: Record<string, unknown>;
+}
+
 export interface SlimNode {
   unique_id: string;
   name: string;
@@ -14,6 +19,9 @@ export interface SlimNode {
   tags?: string[];
   columns?: ColumnInfo[];
   raw_code?: string;
+  // Test fields
+  tests?: TestInfo[];                          // Table-level tests
+  column_tests?: Record<string, TestInfo[]>;   // Column name → tests
   // Source-specific fields
   source_description?: string;
   loader?: string;
@@ -92,6 +100,12 @@ export interface LoadingProgress {
   detail: string;
 }
 
+export interface CustomTestDefinition {
+  name: string;
+  level: 'column' | 'table';
+  description: string;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -107,6 +121,12 @@ declare global {
       downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
       installUpdate: () => Promise<{ success: boolean; error?: string; needsManual?: boolean; htmlUrl?: string }>;
       onUpdateProgress: (callback: (data: { percent: number }) => void) => () => void;
+      // Custom test definitions
+      loadCustomTests: () => Promise<CustomTestDefinition[]>;
+      saveCustomTests: (tests: CustomTestDefinition[]) => Promise<boolean>;
+      importTestsYaml: () => Promise<{ success: boolean; tests?: CustomTestDefinition[]; error?: string; count?: number }>;
+      exportTestsYaml: (tests: CustomTestDefinition[]) => Promise<{ success: boolean; error?: string }>;
+      saveTestsTemplate: () => Promise<{ success: boolean; error?: string }>;
     };
   }
 }
