@@ -40,3 +40,19 @@ html, body, #root {
 .animate-fade-in-up {
   animation: fade-in-up 0.2s ease-out;
 }
+
+/* Detail sidebar slide-in from right */
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.2s ease-out;
+}

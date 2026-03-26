@@ -10,6 +10,7 @@ import { buildGraphData, getFilteredNodeIds, COMPOUND_LAYOUT_MAX_NODES, PERF_MOD
 import { PerfModeToast } from './components/PerfModeToast';
 import { CopiedToast } from './components/CopiedToast';
 import { UpdateToast } from './components/UpdateToast';
+import { DetailSidebar } from './components/DetailSidebar';
 import { ParsedManifest, FilterState, Settings, LoadingProgress, AirflowDagMap, UpdateStatus, UpdateInfo } from './types';
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
@@ -112,6 +113,8 @@ export default function App() {
   const [keyword, setKeyword] = useState('');
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [activeResultNodeId, setActiveResultNodeId] = useState<string | null>(null);
+  const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
+  const [lastClickedNodeId, setLastClickedNodeId] = useState<string | null>(null);
 
   // Airflow DAG state
   const [airflowDagMap, setAirflowDagMap] = useState<AirflowDagMap | null>(null);
@@ -342,6 +345,11 @@ export default function App() {
     window.open(url, '_blank');
   }, []);
 
+  // Close detail sidebar when selected model changes (new graph rendered)
+  useEffect(() => {
+    setDetailNodeId(null);
+  }, [filters.selectedModel]);
+
   // Compute which visible node IDs match the keyword in their raw_code
   const { filteredIds, highlightedIds } = useMemo(() => {
     if (!manifest) return { filteredIds: null, highlightedIds: new Set<string>() };
@@ -520,40 +528,78 @@ export default function App() {
         )}
 
         {manifest && !loading && filters.selectedModel && nodes.length > 0 && (
-          <div className="absolute inset-0 flex flex-col">
-            {/* Graph area */}
-            <div className="flex-1 relative min-h-0">
-              <KeywordSearch
-                keyword={keyword}
-                onKeywordChange={setKeyword}
-                matchCount={highlightedIds.size}
-                totalVisible={nodes.filter((n) => n.type === 'model' && !(n.data as any).isSource).length}
-              />
-              <ReactFlowProvider>
-                <GraphCanvas
+          <div className="absolute inset-0 flex">
+            {/* Graph + search results column */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {/* Graph area */}
+              <div className="flex-1 relative min-h-0">
+                <KeywordSearch
+                  keyword={keyword}
+                  onKeywordChange={setKeyword}
+                  matchCount={highlightedIds.size}
+                  totalVisible={nodes.filter((n) => n.type === 'model' && !(n.data as any).isSource).length}
+                />
+                <ReactFlowProvider>
+                  <GraphCanvas
                   nodes={nodes}
                   edges={edges}
                   selectedModel={filters.selectedModel}
                   focusNodeId={focusNodeId}
                   onFocusHandled={() => setFocusNodeId(null)}
-                  onNodeClick={(nodeId) => setActiveResultNodeId(nodeId)}
+                  onNodeClick={(nodeId) => {
+                    // If detail sidebar is already open, always update it
+                    if (detailNodeId) {
+                      setDetailNodeId(nodeId);
+                      setActiveResultNodeId(nodeId);
+                      setLastClickedNodeId(nodeId);
+                      return;
+                    }
+                    // If keyword search is active: first click scrolls to search result,
+                    // second click (same node) opens detail sidebar
+                    if (keyword && highlightedIds.size > 0) {
+                      if (lastClickedNodeId === nodeId) {
+                        // Second click on same node → open detail
+                        setDetailNodeId(nodeId);
+                      } else {
+                        // First click → scroll to search result
+                        setActiveResultNodeId(nodeId);
+                      }
+                    } else {
+                      // No keyword search → open detail immediately
+                      setDetailNodeId(nodeId);
+                    }
+                    setLastClickedNodeId(nodeId);
+                  }}
                   manifest={manifest}
                   airflowDagMap={airflowDagMap}
                   showDagGroups={showDagGroups}
                   edgeAnimations={settings.edgeAnimations}
+                  />
+                </ReactFlowProvider>
+              </div>
+
+              {/* Search results panel */}
+              {keyword && matchResults.length > 0 && (
+                <SearchResults
+                  keyword={keyword}
+                  results={matchResults}
+                  onFocusModel={(nodeId) => setFocusNodeId(nodeId)}
+                  activeResultNodeId={activeResultNodeId}
+                  onActiveResultHandled={() => setActiveResultNodeId(null)}
                 />
-              </ReactFlowProvider>
+              )}
             </div>
 
-            {/* Search results panel */}
-            {keyword && matchResults.length > 0 && (
-              <SearchResults
-                keyword={keyword}
-                results={matchResults}
-                onFocusModel={(nodeId) => setFocusNodeId(nodeId)}
-                activeResultNodeId={activeResultNodeId}
-                onActiveResultHandled={() => setActiveResultNodeId(null)}
-              />
+            {/* Detail sidebar */}
+            {detailNodeId && manifest?.allNodes.get(detailNodeId) && (
+              <div className="shrink-0">
+                <DetailSidebar
+                  key={detailNodeId}
+                  node={manifest.allNodes.get(detailNodeId)!}
+                  airflowDags={airflowDagMap?.[detailNodeId] || null}
+                  onClose={() => setDetailNodeId(null)}
+                />
+              </div>
             )}
           </div>
         )}
