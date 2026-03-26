@@ -3,6 +3,11 @@ export interface ColumnInfo {
   type: string;
 }
 
+export interface TestInfo {
+  name: string;
+  kwargs: Record<string, unknown>;
+}
+
 export interface SlimNode {
   unique_id: string;
   name: string;
@@ -14,6 +19,9 @@ export interface SlimNode {
   tags?: string[];
   columns?: ColumnInfo[];
   raw_code?: string;
+  // Test fields
+  tests?: TestInfo[];                          // Table-level tests
+  column_tests?: Record<string, TestInfo[]>;   // Column name → tests
   // Source-specific fields
   source_description?: string;
   loader?: string;

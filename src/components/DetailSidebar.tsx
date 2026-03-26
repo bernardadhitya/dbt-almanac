@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { SlimNode, AirflowDagInfo } from '../types';
+import { SlimNode, AirflowDagInfo, TestInfo } from '../types';
 import { DbtIcon, AirflowIcon } from './Icons';
 import { CopyButton } from './CopyButton';
+import { getTestDescription } from '../utils/testDescriptions';
 
 const MIN_WIDTH = 240;
 const DEFAULT_WIDTH = 320;
@@ -67,6 +68,49 @@ function inferSourceSystem(node: SlimNode): string | null {
   return null;
 }
 
+function TestIcon() {
+  return (
+    <svg className="w-3 h-3 shrink-0 text-emerald-500 dark:text-emerald-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+}
+
+function TestRow({ test, level }: { test: TestInfo; level: 'column' | 'table' }) {
+  const { description, isKnown } = getTestDescription(test.name, test.kwargs, level);
+  return (
+    <div className="flex items-start gap-2 py-1.5 px-2.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50">
+      <TestIcon />
+      <div className="min-w-0 flex-1">
+        {isKnown ? (
+          <>
+            <p className="text-[11px] text-gray-700 dark:text-gray-300 leading-relaxed">
+              {description}
+            </p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5">
+              {test.name}
+            </p>
+          </>
+        ) : (
+          <p className="text-[11px] text-gray-700 dark:text-gray-300 font-mono">
+            {test.name}
+            {Object.keys(test.kwargs).length > 0 && (
+              <span className="text-gray-400 dark:text-gray-500">
+                ({Object.entries(test.kwargs).map(([k, v], i) => (
+                  <span key={k}>
+                    {i > 0 && ', '}
+                    {k}: {Array.isArray(v) ? (v as unknown[]).join(', ') : String(v)}
+                  </span>
+                ))})
+              </span>
+            )}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ExternalLinkIcon() {
   return (
     <svg className="w-3 h-3 inline ml-0.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,6 +127,9 @@ export function DetailSidebar({ node, airflowDags, onClose }: DetailSidebarProps
   const hasMoreCols = columns.length > MAX_COLUMNS;
   const visibleCols = columnsExpanded ? columns : columns.slice(0, MAX_COLUMNS);
   const description = node.description || node.source_description || '';
+
+  const tableTests = node.tests || [];
+  const columnTests = node.column_tests || {};
 
   const sourceSystem = isSource ? inferSourceSystem(node) : null;
   const externalUris = node.external_uris || [];
@@ -299,43 +346,58 @@ export function DetailSidebar({ node, airflowDags, onClose }: DetailSidebarProps
           </section>
         )}
 
+        {/* Table-level Tests */}
+        {tableTests.length > 0 && (
+          <section>
+            <h3 className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">
+              Tests ({tableTests.length})
+            </h3>
+            <div className="space-y-1">
+              {tableTests.map((test, i) => (
+                <TestRow key={`${test.name}-${i}`} test={test} level="table" />
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Columns */}
         <section>
           <h3 className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">
             Columns ({columns.length})
           </h3>
           {columns.length > 0 ? (
-            <div className="border border-gray-100 dark:border-gray-700 rounded overflow-hidden">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-gray-50 dark:bg-gray-800/60">
-                    <th className="text-left px-2 py-1 text-[11px] font-medium text-gray-500 dark:text-gray-400">Name</th>
-                    <th className="text-left px-2 py-1 text-[11px] font-medium text-gray-500 dark:text-gray-400">Type</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleCols.map((col, i) => (
-                    <tr
-                      key={col.name}
-                      className={i % 2 === 0
-                        ? 'bg-white dark:bg-gray-900/20'
-                        : 'bg-gray-50/50 dark:bg-gray-800/30'
-                      }
-                    >
-                      <td className="px-2 py-1 text-gray-800 dark:text-gray-200 font-mono truncate max-w-[160px]">
+            <div className="space-y-1">
+              {visibleCols.map((col) => {
+                const colTests: TestInfo[] = columnTests[col.name] || columnTests[col.name.toLowerCase()] || [];
+                return (
+                  <div
+                    key={col.name}
+                    className="border border-gray-100 dark:border-gray-700 rounded px-2.5 py-1.5 bg-gray-50/50 dark:bg-gray-800/30"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-mono text-gray-800 dark:text-gray-200 truncate">
                         {col.name}
-                      </td>
-                      <td className="px-2 py-1 text-gray-500 dark:text-gray-400 font-mono truncate max-w-[100px]">
-                        {col.type || '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </span>
+                      {col.type && (
+                        <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500 shrink-0">
+                          {col.type}
+                        </span>
+                      )}
+                    </div>
+                    {colTests.length > 0 && (
+                      <div className="space-y-1 mt-1.5">
+                        {colTests.map((test, i) => (
+                          <TestRow key={`${test.name}-${i}`} test={test} level="column" />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               {hasMoreCols && (
                 <button
                   onClick={() => setColumnsExpanded(!columnsExpanded)}
-                  className="w-full px-2 py-1.5 text-center text-[11px] text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 bg-gray-50 dark:bg-gray-800/40 border-t border-gray-100 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700/40 transition-colors cursor-pointer"
+                  className="w-full px-2 py-1.5 text-center text-[11px] text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 bg-gray-50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-700 rounded hover:bg-gray-100 dark:hover:bg-gray-700/40 transition-colors cursor-pointer"
                 >
                   {columnsExpanded
                     ? 'Show less'
