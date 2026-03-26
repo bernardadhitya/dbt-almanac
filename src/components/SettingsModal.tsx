@@ -48,6 +48,7 @@ export function SettingsModal({
   const [formDescription, setFormDescription] = useState('');
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [testSearch, setTestSearch] = useState('');
 
   // Clear import message after 4 seconds
   useEffect(() => {
@@ -303,13 +304,27 @@ export function SettingsModal({
           {/* Custom tests list */}
           {customTests.length > 0 && (
             <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden mb-3">
-              <div className="px-3 py-1.5 border-b border-gray-200 dark:border-gray-700">
-                <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+              <div className="px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 shrink-0">
                   {customTests.length} custom definition{customTests.length !== 1 ? 's' : ''}
                 </span>
+                <div className="relative flex-1 max-w-[200px]">
+                  <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={testSearch}
+                    onChange={(e) => setTestSearch(e.target.value)}
+                    placeholder="Search tests..."
+                    className="w-full pl-6 pr-2 py-1 text-[11px] rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
               </div>
               <div className="max-h-48 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
-                {customTests.map((test, i) => (
+                {customTests.map((test, i) => {
+                  if (testSearch && !test.name.toLowerCase().includes(testSearch.toLowerCase())) return null;
+                  return (
                   <div key={`${test.name}-${i}`} className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors group">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
@@ -351,7 +366,8 @@ export function SettingsModal({
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
