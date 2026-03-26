@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as https from 'https';
 import { spawn, execSync } from 'child_process';
 import Store from 'electron-store';
+import * as yaml from 'js-yaml';
 
 const GITHUB_OWNER = 'bernardadhitya';
 const GITHUB_REPO = 'dbt-almanac';
@@ -375,6 +376,134 @@ ipcMain.handle('download-update', async () => {
     await downloadFile(pendingUpdate.downloadUrl, zipPath);
     downloadedUpdatePath = zipPath;
 
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// ────────────────────────────────────────────────────
+// Custom Test Definitions IPC Handlers
+// ────────────────────────────────────────────────────
+
+const CUSTOM_TESTS_PATH = path.join(app.getPath('userData'), 'custom-tests.json');
+
+const TESTS_TEMPLATE_YAML = `# custom-tests.yml
+# Define human-readable descriptions for custom dbt tests
+#
+# Template syntax:
+#   {{arg_name}}          - replaced with the test argument value
+#   {{arg_name|default}}  - replaced with the argument value, or "default" if not provided
+#   [[optional text]]     - only shown if all {{args}} inside it have values
+#
+# Examples:
+#
+#   - name: not_null_where
+#     level: column
+#     description: "Column should not be null[[ where {{where}}]]"
+#
+#   - name: row_count_threshold
+#     level: table
+#     description: "Table should have at least {{min_rows|1000}} rows"
+
+tests: []
+`;
+
+interface CustomTestDef {
+  name: string;
+  level: 'column' | 'table';
+  description: string;
+}
+
+ipcMain.handle('load-custom-tests', async () => {
+  try {
+    if (fs.existsSync(CUSTOM_TESTS_PATH)) {
+      const data = fs.readFileSync(CUSTOM_TESTS_PATH, 'utf-8');
+      return JSON.parse(data);
+    }
+    return [];
+  } catch {
+    return [];
+  }
+});
+
+ipcMain.handle('save-custom-tests', async (_event, tests: CustomTestDef[]) => {
+  try {
+    fs.writeFileSync(CUSTOM_TESTS_PATH, JSON.stringify(tests, null, 2), 'utf-8');
+    return true;
+  } catch {
+    return false;
+  }
+});
+
+ipcMain.handle('import-tests-yaml', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      properties: ['openFile'],
+      title: 'Import Custom Test Definitions',
+      filters: [{ name: 'YAML', extensions: ['yml', 'yaml'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, error: 'Cancelled' };
+    }
+    const content = fs.readFileSync(result.filePaths[0], 'utf-8');
+    const doc = yaml.load(content) as any;
+    if (!doc || !Array.isArray(doc.tests)) {
+      return { success: false, error: 'Invalid YAML format. Expected a "tests" array.' };
+    }
+    const tests: CustomTestDef[] = [];
+    for (const entry of doc.tests) {
+      if (!entry.name || !entry.level || !entry.description) {
+        continue; // skip invalid entries
+      }
+      if (entry.level !== 'column' && entry.level !== 'table') {
+        continue;
+      }
+      tests.push({
+        name: String(entry.name),
+        level: entry.level,
+        description: String(entry.description),
+      });
+    }
+    if (tests.length === 0) {
+      return { success: false, error: 'No valid test definitions found in the file.' };
+    }
+    return { success: true, tests, count: tests.length };
+  } catch (err: any) {
+    return { success: false, error: `Failed to parse YAML: ${err.message}` };
+  }
+});
+
+ipcMain.handle('export-tests-yaml', async (_event, tests: CustomTestDef[]) => {
+  try {
+    const result = await dialog.showSaveDialog(mainWindow!, {
+      title: 'Export Custom Test Definitions',
+      defaultPath: 'custom-tests.yml',
+      filters: [{ name: 'YAML', extensions: ['yml', 'yaml'] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false, error: 'Cancelled' };
+    }
+    const doc = { tests: tests.map((t) => ({ name: t.name, level: t.level, description: t.description })) };
+    const yamlStr = yaml.dump(doc, { lineWidth: -1, quotingType: '"', forceQuotes: false });
+    fs.writeFileSync(result.filePath, yamlStr, 'utf-8');
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('save-tests-template', async () => {
+  try {
+    const result = await dialog.showSaveDialog(mainWindow!, {
+      title: 'Save Test Definitions Template',
+      defaultPath: 'custom-tests-template.yml',
+      filters: [{ name: 'YAML', extensions: ['yml', 'yaml'] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false, error: 'Cancelled' };
+    }
+    fs.writeFileSync(result.filePath, TESTS_TEMPLATE_YAML, 'utf-8');
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };

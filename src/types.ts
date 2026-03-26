@@ -100,6 +100,12 @@ export interface LoadingProgress {
   detail: string;
 }
 
+export interface CustomTestDefinition {
+  name: string;
+  level: 'column' | 'table';
+  description: string;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -115,6 +121,12 @@ declare global {
       downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
       installUpdate: () => Promise<{ success: boolean; error?: string; needsManual?: boolean; htmlUrl?: string }>;
       onUpdateProgress: (callback: (data: { percent: number }) => void) => () => void;
+      // Custom test definitions
+      loadCustomTests: () => Promise<CustomTestDefinition[]>;
+      saveCustomTests: (tests: CustomTestDefinition[]) => Promise<boolean>;
+      importTestsYaml: () => Promise<{ success: boolean; tests?: CustomTestDefinition[]; error?: string; count?: number }>;
+      exportTestsYaml: (tests: CustomTestDefinition[]) => Promise<{ success: boolean; error?: string }>;
+      saveTestsTemplate: () => Promise<{ success: boolean; error?: string }>;
     };
   }
 }

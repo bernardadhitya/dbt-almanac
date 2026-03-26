@@ -28,4 +28,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-progress', handler);
     return () => ipcRenderer.removeListener('update-progress', handler);
   },
+  // Custom test definitions
+  loadCustomTests: () => ipcRenderer.invoke('load-custom-tests'),
+  saveCustomTests: (tests: any[]) => ipcRenderer.invoke('save-custom-tests', tests),
+  importTestsYaml: () => ipcRenderer.invoke('import-tests-yaml'),
+  exportTestsYaml: (tests: any[]) => ipcRenderer.invoke('export-tests-yaml', tests),
+  saveTestsTemplate: () => ipcRenderer.invoke('save-tests-template'),
 });

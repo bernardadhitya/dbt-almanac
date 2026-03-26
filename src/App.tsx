@@ -11,7 +11,8 @@ import { PerfModeToast } from './components/PerfModeToast';
 import { CopiedToast } from './components/CopiedToast';
 import { UpdateToast } from './components/UpdateToast';
 import { DetailSidebar } from './components/DetailSidebar';
-import { ParsedManifest, FilterState, Settings, LoadingProgress, AirflowDagMap, UpdateStatus, UpdateInfo } from './types';
+import { ParsedManifest, FilterState, Settings, LoadingProgress, AirflowDagMap, UpdateStatus, UpdateInfo, CustomTestDefinition } from './types';
+import { setCustomTestDefinitions } from './utils/testDescriptions';
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
@@ -127,6 +128,9 @@ export default function App() {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle' });
   const [updateToastInfo, setUpdateToastInfo] = useState<UpdateInfo | null>(null);
 
+  // Custom test definitions
+  const [customTests, setCustomTests] = useState<CustomTestDefinition[]>([]);
+
   // Listen for progress events from main process
   useEffect(() => {
     if (!isElectron) return;
@@ -159,7 +163,7 @@ export default function App() {
     return cleanup;
   }, []);
 
-  // Load settings on mount
+  // Load settings + custom tests on mount
   useEffect(() => {
     if (isElectron) {
       window.electronAPI.getSettings().then((s) => {
@@ -167,6 +171,10 @@ export default function App() {
         if (s.projectPath) loadManifest(s.projectPath, s.airflowDagsPath);
       });
       window.electronAPI.getAppVersion().then(setAppVersion);
+      window.electronAPI.loadCustomTests().then((tests) => {
+        setCustomTests(tests);
+        setCustomTestDefinitions(tests);
+      });
     }
   }, []);
 
@@ -343,6 +351,14 @@ export default function App() {
 
   const handleOpenReleaseUrl = useCallback((url: string) => {
     window.open(url, '_blank');
+  }, []);
+
+  const handleCustomTestsChange = useCallback(async (tests: CustomTestDefinition[]) => {
+    setCustomTests(tests);
+    setCustomTestDefinitions(tests);
+    if (isElectron) {
+      await window.electronAPI.saveCustomTests(tests);
+    }
   }, []);
 
   // Close detail sidebar when selected model changes (new graph rendered)
@@ -637,6 +653,8 @@ export default function App() {
         onCheckForUpdate={() => checkForUpdate(false)}
         onApplyUpdate={() => applyUpdate()}
         onOpenReleaseUrl={handleOpenReleaseUrl}
+        customTests={customTests}
+        onCustomTestsChange={handleCustomTestsChange}
       />
     </div>
   );

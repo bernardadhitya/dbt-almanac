@@ -196,6 +196,24 @@ function renderTemplate(template: string, kwargs: Record<string, unknown>): stri
   return result;
 }
 
+// ── Custom test overlay ──
+// Custom definitions are merged at runtime, overriding built-in templates.
+let customOverrides: Record<string, TestTemplate> = {};
+
+/**
+ * Merge an array of custom test definitions (from YAML import / settings)
+ * into the lookup table. Custom definitions take priority over built-in ones.
+ */
+export function setCustomTestDefinitions(
+  customs: { name: string; level: 'column' | 'table'; description: string }[],
+): void {
+  const map: Record<string, TestTemplate> = {};
+  for (const c of customs) {
+    map[c.name] = { template: c.description, level: c.level };
+  }
+  customOverrides = map;
+}
+
 /**
  * Get a human-readable description for a test.
  *
@@ -211,8 +229,18 @@ export function getTestDescription(
 ): { description: string; isKnown: boolean } {
   // Try level-specific key first (for tests that exist at both levels like expression_is_true)
   const levelKey = `${testName}:${level}`;
-  const entry = TEST_TEMPLATES[levelKey] || TEST_TEMPLATES[testName];
 
+  // Custom overrides take priority
+  const customEntry = customOverrides[levelKey] || customOverrides[testName];
+  if (customEntry) {
+    return {
+      description: renderTemplate(customEntry.template, kwargs),
+      isKnown: true,
+    };
+  }
+
+  // Then built-in templates
+  const entry = TEST_TEMPLATES[levelKey] || TEST_TEMPLATES[testName];
   if (entry) {
     return {
       description: renderTemplate(entry.template, kwargs),
