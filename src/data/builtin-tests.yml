@@ -1,0 +1,389 @@
+# Built-in dbt test descriptions for Almanac
+#
+# These are the default human-readable descriptions for official dbt tests
+# and popular community packages (dbt_utils, dbt_expectations, elementary).
+#
+# Template syntax:
+#   {{arg_name}}          - replaced with the test argument value
+#   {{arg_name|default}}  - replaced with the argument value, or "default" if not provided
+#   [[optional text]]     - only shown if all {{args}} inside it have values
+#
+# For tests that exist at both column and table level, append ":column" or ":table"
+# to the name (e.g. "dbt_utils.expression_is_true:table").
+
+tests:
+  # ── dbt core ──
+  - name: not_null
+    level: column
+    description: "Column should not contain any NULL values"
+
+  - name: unique
+    level: column
+    description: "Column should not contain any duplicate values"
+
+  - name: accepted_values
+    level: column
+    description: "Column should only contain values from {{values}}"
+
+  - name: relationships
+    level: column
+    description: "Column should only have values that exist in {{field}} of {{to}}"
+
+  # ── dbt_utils ──
+  - name: dbt_utils.equal_rowcount
+    level: table
+    description: "Table should have the same number of rows as {{compare_model}}"
+
+  - name: dbt_utils.fewer_rows_than
+    level: table
+    description: "Table should have fewer rows than {{compare_model}}"
+
+  - name: dbt_utils.equality
+    level: table
+    description: "Table should have identical content to {{compare_model}}[[, optionally comparing only {{compare_columns}}]][[, or excluding {{exclude_columns}}]][[, with {{precision}} decimal precision]]"
+
+  - name: "dbt_utils.expression_is_true:table"
+    level: table
+    description: "Table should return true for all rows for expression {{expression}}"
+
+  - name: "dbt_utils.expression_is_true:column"
+    level: column
+    description: "Column should return true for all rows for expression {{expression}}"
+
+  - name: dbt_utils.recency
+    level: table
+    description: "Table should have its most recent value in {{field}} within {{interval}} {{datepart}}(s) from now"
+
+  - name: dbt_utils.at_least_one
+    level: column
+    description: "Column should contain at least one non-null value"
+
+  - name: dbt_utils.not_constant
+    level: column
+    description: "Column should not have the same value in every row"
+
+  - name: dbt_utils.not_empty_string
+    level: column
+    description: "Column should not contain any empty string values[[ (whitespace trimming: {{trim_whitespace}})]]"
+
+  - name: dbt_utils.cardinality_equality
+    level: column
+    description: "Column should have the same number of distinct values as {{field}} in {{to}}"
+
+  - name: dbt_utils.not_null_proportion
+    level: column
+    description: "Column should have a non-null proportion of at least {{at_least}}[[ and at most {{at_most}}]]"
+
+  - name: dbt_utils.not_accepted_values
+    level: column
+    description: "Column should never contain any of {{values}}"
+
+  - name: dbt_utils.relationships_where
+    level: column
+    description: "Column should only have values that exist in {{field}} of {{to}}[[, filtering source rows by {{from_condition}}]][[, and target rows by {{to_condition}}]]"
+
+  - name: dbt_utils.mutually_exclusive_ranges
+    level: table
+    description: "Table should have no overlapping ranges from {{lower_bound_column}} to {{upper_bound_column}}[[, partitioned by {{partition_by}}]][[, with gaps policy {{gaps}}]]"
+
+  - name: dbt_utils.sequential_values
+    level: column
+    description: "Column should increment sequentially[[, by {{interval}} {{datepart}}(s),]] with no gaps"
+
+  - name: dbt_utils.unique_combination_of_columns
+    level: table
+    description: "Table should have a unique combination of {{combination_of_columns}} across all rows"
+
+  - name: dbt_utils.accepted_range
+    level: column
+    description: "Column should only have values[[ between {{min_value}} and {{max_value}}]][[ (inclusive: {{inclusive}})]]"
+
+  # ── dbt_expectations ──
+  - name: dbt_expectations.expect_column_to_exist
+    level: column
+    description: "Column should exist in the model"
+
+  - name: dbt_expectations.expect_row_values_to_have_recent_data
+    level: column
+    description: "Column should have data within the last {{interval}} {{datepart}}(s)"
+
+  - name: dbt_expectations.expect_grouped_row_values_to_have_recent_data
+    level: table
+    description: "Table should have recent data in {{timestamp_column}} within the last {{interval}} {{datepart}}(s) for each group in {{group_by}}"
+
+  - name: dbt_expectations.expect_table_aggregation_to_equal_other_table
+    level: table
+    description: "Table should have {{expression}} equal to [[{{compare_expression}} on ]]{{compare_model}}[[, within tolerance of {{tolerance}} or {{tolerance_percent}}%]]"
+
+  - name: dbt_expectations.expect_table_column_count_to_be_between
+    level: table
+    description: "Table should have [[between {{min_value}} and {{max_value}}]] columns"
+
+  - name: dbt_expectations.expect_table_column_count_to_equal_other_table
+    level: table
+    description: "Table should have the same number of columns as {{compare_model}}"
+
+  - name: dbt_expectations.expect_table_column_count_to_equal
+    level: table
+    description: "Table should have exactly {{value}} columns"
+
+  - name: dbt_expectations.expect_table_columns_to_not_contain_set
+    level: table
+    description: "Table should not contain any columns in {{column_list}}"
+
+  - name: dbt_expectations.expect_table_columns_to_contain_set
+    level: table
+    description: "Table should contain all columns in {{column_list}}"
+
+  - name: dbt_expectations.expect_table_columns_to_match_ordered_list
+    level: table
+    description: "Table should have columns that exactly match {{column_list}} in order"
+
+  - name: dbt_expectations.expect_table_columns_to_match_set
+    level: table
+    description: "Table should have columns that exactly match the set {{column_list}}"
+
+  - name: dbt_expectations.expect_table_row_count_to_be_between
+    level: table
+    description: "Table should have [[between {{min_value}} and {{max_value}}]] rows"
+
+  - name: dbt_expectations.expect_table_row_count_to_equal_other_table
+    level: table
+    description: "Table should have the same number of rows as {{compare_model}}"
+
+  - name: dbt_expectations.expect_table_row_count_to_equal_other_table_times_factor
+    level: table
+    description: "Table should have a row count equal to {{compare_model}}'s row count multiplied by {{factor}}"
+
+  - name: dbt_expectations.expect_table_row_count_to_equal
+    level: table
+    description: "Table should have exactly {{value}} rows"
+
+  - name: dbt_expectations.expect_column_values_to_be_null
+    level: column
+    description: "Column should only contain NULL values"
+
+  - name: dbt_expectations.expect_column_values_to_not_be_null
+    level: column
+    description: "Column should not contain any NULL values"
+
+  - name: dbt_expectations.expect_column_values_to_be_unique
+    level: column
+    description: "Column should only contain unique values"
+
+  - name: dbt_expectations.expect_column_values_to_be_of_type
+    level: column
+    description: "Column should be of data type {{column_type}}"
+
+  - name: dbt_expectations.expect_column_values_to_be_in_type_list
+    level: column
+    description: "Column should have a data type that is one of {{column_type_list}}"
+
+  - name: dbt_expectations.expect_column_values_to_have_consistent_casing
+    level: column
+    description: "Column should have consistent letter casing across all string values"
+
+  - name: dbt_expectations.expect_column_values_to_be_in_set
+    level: column
+    description: "Column should only contain values from {{value_set}}"
+
+  - name: dbt_expectations.expect_column_values_to_not_be_in_set
+    level: column
+    description: "Column should not contain any values from {{value_set}}"
+
+  - name: dbt_expectations.expect_column_values_to_be_between
+    level: column
+    description: "Column should only have values [[between {{min_value}} and {{max_value}}]]"
+
+  - name: dbt_expectations.expect_column_values_to_be_decreasing
+    level: column
+    description: "Column should be in decreasing order when sorted by {{sort_column}}"
+
+  - name: dbt_expectations.expect_column_values_to_be_increasing
+    level: column
+    description: "Column should be in increasing order when sorted by {{sort_column}}"
+
+  - name: dbt_expectations.expect_column_value_lengths_to_be_between
+    level: column
+    description: "Column should have string lengths [[between {{min_value}} and {{max_value}} characters]]"
+
+  - name: dbt_expectations.expect_column_value_lengths_to_equal
+    level: column
+    description: "Column should have a string length of exactly {{value}} characters"
+
+  - name: dbt_expectations.expect_column_values_to_match_like_pattern
+    level: column
+    description: "Column should only have values matching the LIKE pattern {{like_pattern}}"
+
+  - name: dbt_expectations.expect_column_values_to_match_like_pattern_list
+    level: column
+    description: "Column should only have values matching at least one of the LIKE patterns in {{like_pattern_list}}"
+
+  - name: dbt_expectations.expect_column_values_to_match_regex
+    level: column
+    description: "Column should only have values matching the regex {{regex}}"
+
+  - name: dbt_expectations.expect_column_values_to_match_regex_list
+    level: column
+    description: "Column should only have values matching at least one regex in {{regex_list}}"
+
+  - name: dbt_expectations.expect_column_values_to_not_match_like_pattern
+    level: column
+    description: "Column should not have any values matching the LIKE pattern {{like_pattern}}"
+
+  - name: dbt_expectations.expect_column_values_to_not_match_like_pattern_list
+    level: column
+    description: "Column should not have any values matching any of the LIKE patterns in {{like_pattern_list}}"
+
+  - name: dbt_expectations.expect_column_values_to_not_match_regex
+    level: column
+    description: "Column should not have any values matching the regex {{regex}}"
+
+  - name: dbt_expectations.expect_column_values_to_not_match_regex_list
+    level: column
+    description: "Column should not have any values matching any regex in {{regex_list}}"
+
+  - name: dbt_expectations.expect_column_distinct_count_to_be_greater_than
+    level: column
+    description: "Column should have more than {{value}} distinct values"
+
+  - name: dbt_expectations.expect_column_distinct_count_to_be_less_than
+    level: column
+    description: "Column should have fewer than {{value}} distinct values"
+
+  - name: dbt_expectations.expect_column_distinct_count_to_equal_other_table
+    level: column
+    description: "Column should have the same distinct count as {{compare_column_name}} in {{compare_model}}"
+
+  - name: dbt_expectations.expect_column_distinct_count_to_equal
+    level: column
+    description: "Column should have exactly {{value}} distinct values"
+
+  - name: dbt_expectations.expect_column_distinct_values_to_be_in_set
+    level: column
+    description: "Column should only have distinct values that are members of {{value_set}}"
+
+  - name: dbt_expectations.expect_column_distinct_values_to_contain_set
+    level: column
+    description: "Column should have distinct values that include all of {{value_set}}"
+
+  - name: dbt_expectations.expect_column_distinct_values_to_equal_set
+    level: column
+    description: "Column should have distinct values that are exactly {{value_set}}"
+
+  - name: dbt_expectations.expect_column_max_to_be_between
+    level: column
+    description: "Column should have a maximum value [[between {{min_value}} and {{max_value}}]]"
+
+  - name: dbt_expectations.expect_column_mean_to_be_between
+    level: column
+    description: "Column should have a mean [[between {{min_value}} and {{max_value}}]]"
+
+  - name: dbt_expectations.expect_column_median_to_be_between
+    level: column
+    description: "Column should have a median [[between {{min_value}} and {{max_value}}]]"
+
+  - name: dbt_expectations.expect_column_min_to_be_between
+    level: column
+    description: "Column should have a minimum value [[between {{min_value}} and {{max_value}}]]"
+
+  - name: dbt_expectations.expect_column_most_common_value_to_be_in_set
+    level: column
+    description: "Column should have its most common value be one of {{value_set}}"
+
+  - name: dbt_expectations.expect_column_proportion_of_unique_values_to_be_between
+    level: column
+    description: "Column should have a proportion of unique values [[between {{min_value}} and {{max_value}}]]"
+
+  - name: dbt_expectations.expect_column_quantile_values_to_be_between
+    level: column
+    description: "Column should have its {{quantile}} quantile [[between {{min_value}} and {{max_value}}]]"
+
+  - name: dbt_expectations.expect_column_stdev_to_be_between
+    level: column
+    description: "Column should have a standard deviation [[between {{min_value}} and {{max_value}}]]"
+
+  - name: dbt_expectations.expect_column_sum_to_be_between
+    level: column
+    description: "Column should have a sum [[between {{min_value}} and {{max_value}}]]"
+
+  - name: dbt_expectations.expect_column_unique_value_count_to_be_between
+    level: column
+    description: "Column should have a unique value count [[between {{min_value}} and {{max_value}}]]"
+
+  - name: dbt_expectations.expect_column_pair_values_A_to_be_greater_than_B
+    level: table
+    description: "Table should have {{column_A}} greater than {{column_B}} for every row"
+
+  - name: dbt_expectations.expect_column_pair_values_to_be_equal
+    level: table
+    description: "Table should have {{column_A}} equal to {{column_B}} for every row"
+
+  - name: dbt_expectations.expect_column_pair_values_to_be_in_set
+    level: table
+    description: "Table should have the pair ({{column_A}}, {{column_B}}) be one of {{value_pairs_set}} for every row"
+
+  - name: dbt_expectations.expect_compound_columns_to_be_unique
+    level: table
+    description: "Table should have a unique combination of {{column_list}} for every row"
+
+  - name: dbt_expectations.expect_multicolumn_sum_to_equal
+    level: table
+    description: "Table should have the sum of {{column_list}} equal to {{sum_total}} for every row"
+
+  - name: dbt_expectations.expect_select_column_values_to_be_unique_within_record
+    level: table
+    description: "Table should have all values across {{column_list}} be distinct within each row"
+
+  - name: dbt_expectations.expect_column_values_to_be_within_n_moving_stdevs
+    level: column
+    description: "Column should have metric changes over {{date_column_name}} stay within [[{{sigma_threshold}} standard deviations]] of a [[{{trend_periods}}-period]] moving average"
+
+  - name: dbt_expectations.expect_column_values_to_be_within_n_stdevs
+    level: column
+    description: "Column should have its aggregated metric within [[{{sigma_threshold}} standard deviations]] of its average"
+
+  - name: dbt_expectations.expect_row_values_to_have_data_for_every_n_datepart
+    level: table
+    description: "Table should have data in {{date_col}} for every [[{{interval}} ]]{{date_part}}(s)[[ between {{test_start_date}} and {{test_end_date}}]]"
+
+  # ── elementary ──
+  - name: elementary.volume_anomalies
+    level: table
+    description: "Table should have a row count[[ per {{time_bucket}}]] (based on {{timestamp_column}}) that does not deviate beyond [[{{anomaly_sensitivity}} standard deviations]] from historical patterns[[ over the {{training_period}} training window]]"
+
+  - name: elementary.freshness_anomalies
+    level: table
+    description: "Table should have the time between data updates (measured by {{timestamp_column}})[[ per {{time_bucket}}]] not deviate beyond [[{{anomaly_sensitivity}} standard deviations]] from historical freshness patterns"
+
+  - name: elementary.event_freshness_anomalies
+    level: table
+    description: "Table should have the lag between {{event_timestamp_column}}[[ and {{update_timestamp_column}}]] not deviate beyond [[{{anomaly_sensitivity}} standard deviations]] from historical patterns"
+
+  - name: elementary.dimension_anomalies
+    level: table
+    description: "Table should have the row count distribution across {{dimensions}} (bucketed by {{timestamp_column}}) not deviate beyond [[{{anomaly_sensitivity}} standard deviations]] from historical patterns"
+
+  - name: elementary.column_anomalies
+    level: column
+    description: "Column should have its {{column_anomalies}} metrics (bucketed by {{timestamp_column}}) not deviate beyond [[{{anomaly_sensitivity}} standard deviations]] from historical values"
+
+  - name: elementary.all_columns_anomalies
+    level: table
+    description: "Table should have {{column_anomalies}} metrics for all columns (bucketed by {{timestamp_column}}) not deviate beyond [[{{anomaly_sensitivity}} standard deviations]] from historical values"
+
+  - name: elementary.schema_changes
+    level: table
+    description: "Table should alert when it is deleted, columns are added/removed, or a column's data type changes"
+
+  - name: elementary.schema_changes_from_baseline
+    level: table
+    description: "Table should have no schema changes against baseline columns defined in the model/source YAML configuration"
+
+  - name: elementary.json_schema
+    level: column
+    description: "Column should only have values that conform to the JSON schema {{json_schema}}"
+
+  - name: elementary.exposure_schema_validity
+    level: table
+    description: "Table should have no column changes that would break downstream exposures"
