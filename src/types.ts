@@ -1,6 +1,7 @@
 export interface ColumnInfo {
   name: string;
   type: string;
+  description?: string;
 }
 
 export interface TestInfo {
