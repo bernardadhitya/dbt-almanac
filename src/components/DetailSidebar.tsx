@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { SlimNode, AirflowDagInfo, TestInfo } from '../types';
 import { DbtIcon, AirflowIcon } from './Icons';
 import { CopyButton } from './CopyButton';
-import { getTestDescription } from '../utils/testDescriptions';
+import { getTestDescription, DescriptionSegment } from '../utils/testDescriptions';
 
 const MIN_WIDTH = 240;
-const DEFAULT_WIDTH = 320;
+const DEFAULT_WIDTH = 640;
 
 interface DetailSidebarProps {
   node: SlimNode;
@@ -70,14 +70,31 @@ function inferSourceSystem(node: SlimNode): string | null {
 
 function TestIcon() {
   return (
-    <svg className="w-3 h-3 shrink-0 text-emerald-500 dark:text-emerald-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
+    <div className="w-2.5 h-2.5 shrink-0 mt-1 rounded-full bg-emerald-500 dark:bg-emerald-400" />
+  );
+}
+
+function RenderedSegments({ segments }: { segments: DescriptionSegment[] }) {
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.type === 'arg' ? (
+          <code
+            key={i}
+            className="px-1 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-mono text-[10px]"
+          >
+            {seg.value}
+          </code>
+        ) : (
+          <span key={i}>{seg.value}</span>
+        ),
+      )}
+    </>
   );
 }
 
 function TestRow({ test, level }: { test: TestInfo; level: 'column' | 'table' }) {
-  const { description, isKnown } = getTestDescription(test.name, test.kwargs, level);
+  const { segments, isKnown } = getTestDescription(test.name, test.kwargs, level);
   return (
     <div className="flex items-start gap-2 py-1.5 px-2.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 overflow-hidden">
       <TestIcon />
@@ -85,7 +102,7 @@ function TestRow({ test, level }: { test: TestInfo; level: 'column' | 'table' })
         {isKnown ? (
           <>
             <p className="text-[11px] text-gray-700 dark:text-gray-300 leading-relaxed break-words">
-              {description}
+              <RenderedSegments segments={segments} />
             </p>
             <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5 truncate" title={test.name}>
               {test.name}
@@ -384,6 +401,11 @@ export function DetailSidebar({ node, airflowDags, onClose }: DetailSidebarProps
                         </span>
                       )}
                     </div>
+                    {col.description && (
+                      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 leading-relaxed">
+                        {col.description}
+                      </p>
+                    )}
                     {colTests.length > 0 && (
                       <div className="space-y-1 mt-1.5">
                         {colTests.map((test, i) => (

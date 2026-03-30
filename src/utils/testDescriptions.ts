@@ -196,6 +196,62 @@ function renderTemplate(template: string, kwargs: Record<string, unknown>): stri
   return result;
 }
 
+/** A segment of a rendered test description — either plain text or a resolved argument value. */
+export interface DescriptionSegment {
+  type: 'text' | 'arg';
+  value: string;
+}
+
+/**
+ * Render a template into structured segments, marking argument values distinctly.
+ */
+function renderTemplateSegments(template: string, kwargs: Record<string, unknown>): DescriptionSegment[] {
+  // Step 1: Process [[ ... ]] optional segments (same as renderTemplate)
+  let result = template;
+  const optionalRegex = /\[\[([^\[\]]*?)\]\]/g;
+  let prevResult = '';
+  while (prevResult !== result) {
+    prevResult = result;
+    result = result.replace(optionalRegex, (_match, inner: string) => {
+      const varRefs = [...inner.matchAll(VAR_REGEX)];
+      for (const ref of varRefs) {
+        const key = ref[1];
+        const defaultVal = ref[2];
+        if (!hasValue(kwargs, key) && defaultVal === undefined) return '';
+      }
+      return inner;
+    });
+  }
+
+  // Clean up double spaces
+  result = result.replace(/  +/g, ' ').trim();
+
+  // Step 2: Split into segments, alternating between text and resolved args
+  const segments: DescriptionSegment[] = [];
+  let lastIndex = 0;
+  const regex = /\{\{(\w+)(?:\|([^}]*))?\}\}/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(result)) !== null) {
+    // Text before this match
+    if (match.index > lastIndex) {
+      segments.push({ type: 'text', value: result.slice(lastIndex, match.index) });
+    }
+    const key = match[1];
+    const defaultVal = match[2];
+    const resolved = resolveVar(kwargs, key, defaultVal);
+    segments.push({ type: 'arg', value: resolved !== null ? resolved : key });
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Trailing text
+  if (lastIndex < result.length) {
+    segments.push({ type: 'text', value: result.slice(lastIndex) });
+  }
+
+  return segments.length > 0 ? segments : [{ type: 'text', value: result }];
+}
+
 // ── Custom test overlay ──
 // Custom definitions are merged at runtime, overriding built-in templates.
 let customOverrides: Record<string, TestTemplate> = {};
@@ -226,7 +282,7 @@ export function getTestDescription(
   testName: string,
   kwargs: Record<string, unknown>,
   level: 'column' | 'table',
-): { description: string; isKnown: boolean } {
+): { description: string; segments: DescriptionSegment[]; isKnown: boolean } {
   // Try level-specific key first (for tests that exist at both levels like expression_is_true)
   const levelKey = `${testName}:${level}`;
 
@@ -235,6 +291,7 @@ export function getTestDescription(
   if (customEntry) {
     return {
       description: renderTemplate(customEntry.template, kwargs),
+      segments: renderTemplateSegments(customEntry.template, kwargs),
       isKnown: true,
     };
   }
@@ -244,6 +301,7 @@ export function getTestDescription(
   if (entry) {
     return {
       description: renderTemplate(entry.template, kwargs),
+      segments: renderTemplateSegments(entry.template, kwargs),
       isKnown: true,
     };
   }
@@ -251,6 +309,7 @@ export function getTestDescription(
   // Unknown/custom test — return name as-is
   return {
     description: testName,
+    segments: [{ type: 'text', value: testName }],
     isKnown: false,
   };
 }

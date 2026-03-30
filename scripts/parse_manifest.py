@@ -67,10 +67,10 @@ def main():
     for uid, node in nodes.items():
         if node.get("resource_type") == "model":
             name = node.get("name", "")
-            # Extract columns as compact list [{name, type}]
+            # Extract columns as compact list [{name, type, description}]
             columns_raw = node.get("columns", {})
             columns = [
-                {"name": c.get("name", k), "type": c.get("data_type", "")}
+                {"name": c.get("name", k), "type": c.get("data_type", ""), "description": c.get("description", "")}
                 for k, c in columns_raw.items()
             ]
             models[uid] = {
@@ -142,9 +142,9 @@ def main():
                 if col_type:
                     yaml_lines.append(f"      data_type: {col_type}")
 
-        # Extract columns as compact list [{name, type}]
+        # Extract columns as compact list [{name, type, description}]
         src_columns = [
-            {"name": c.get("name", k), "type": c.get("data_type", "")}
+            {"name": c.get("name", k), "type": c.get("data_type", ""), "description": c.get("description", "")}
             for k, c in columns.items()
         ]
 
