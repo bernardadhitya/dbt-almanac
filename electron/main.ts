@@ -518,6 +518,11 @@ ipcMain.handle('install-update', async () => {
   const updateDir = path.join(app.getPath('userData'), 'updates');
   const extractDir = path.join(updateDir, 'extracted');
 
+  // Disable Electron's ASAR interception — without this, fs treats .asar files
+  // as virtual directories and rmdir/readdir fail on the actual files.
+  const prevNoAsar = process.noAsar;
+  process.noAsar = true;
+
   try {
     // Clean up previous extraction
     if (fs.existsSync(extractDir)) {
@@ -644,5 +649,7 @@ ipcMain.handle('install-update', async () => {
       needsManual: true,
       htmlUrl: pendingUpdate?.htmlUrl,
     };
+  } finally {
+    process.noAsar = prevNoAsar;
   }
 });
