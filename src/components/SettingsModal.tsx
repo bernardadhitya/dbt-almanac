@@ -4,6 +4,30 @@ import { DbtIcon, AirflowIcon } from './Icons';
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
+/** Renders a test description template with {{args}} and [[optionals]] highlighted as code blocks */
+function TemplateSyntax({ text }: { text: string }) {
+  // Match {{...}} and [[...]] tokens
+  const regex = /(\{\{[^}]*\}\}|\[\[[^\]]*\]\])/g;
+  const parts = text.split(regex);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith('{{') || part.startsWith('[[')) {
+          return (
+            <code
+              key={i}
+              className="px-0.5 py-px rounded bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 text-[10px] font-mono"
+            >
+              {part}
+            </code>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
 type SettingsTab = 'general' | 'tests' | 'updates';
 
 interface SettingsModalProps {
@@ -418,7 +442,7 @@ export function SettingsModal({
                                   </span>
                                 </div>
                                 <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed line-clamp-2">
-                                  {test.description}
+                                  <TemplateSyntax text={test.description} />
                                 </p>
                               </div>
                               <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
