@@ -103,6 +103,9 @@ export default function App() {
   const [manifest, setManifest] = useState<ParsedManifest | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     selectedModel: null,
+    advancedMode: false,
+    selectorExpression: '',
+    focusedNodeIds: null,
     upstreamLevel: 3,
     downstreamLevel: 3,
     locked: true,
@@ -361,10 +364,10 @@ export default function App() {
     }
   }, []);
 
-  // Close detail sidebar when selected model changes (new graph rendered)
+  // Close detail sidebar when selected asset(s) change (new graph rendered)
   useEffect(() => {
     setDetailNodeId(null);
-  }, [filters.selectedModel]);
+  }, [filters.selectedModel, filters.focusedNodeIds]);
 
   // Compute which visible node IDs match the keyword in their raw_code
   const { filteredIds, highlightedIds } = useMemo(() => {
@@ -409,14 +412,18 @@ export default function App() {
     const nodeCount = filteredIds ? filteredIds.size : 0;
     const useCompoundLayout =
       showDagGroups && !!airflowDagMap && nodeCount <= COMPOUND_LAYOUT_MAX_NODES;
+    const focusedSet = filters.advancedMode && filters.focusedNodeIds
+      ? new Set(filters.focusedNodeIds)
+      : null;
     return buildGraphData(
       manifest,
       filteredIds,
       filters.selectedModel,
       highlightedIds,
       useCompoundLayout ? airflowDagMap : null,
+      focusedSet,
     );
-  }, [manifest, filteredIds, filters.selectedModel, highlightedIds, showDagGroups, airflowDagMap]);
+  }, [manifest, filteredIds, filters.selectedModel, filters.advancedMode, filters.focusedNodeIds, highlightedIds, showDagGroups, airflowDagMap]);
 
   // Detect when performance optimizations are active so we can notify the user
   const perfModeActive = showDagGroups && !!airflowDagMap && nodes.length > COMPOUND_LAYOUT_MAX_NODES;
@@ -433,6 +440,7 @@ export default function App() {
         modelNames={manifest?.modelNames || []}
         sourceNames={manifest?.sourceNames || []}
         allNodes={manifest?.allNodes ?? null}
+        manifest={manifest}
         filters={filters}
         onFiltersChange={setFilters}
         nodeCount={nodes.length}
@@ -441,6 +449,7 @@ export default function App() {
         hasAirflowDags={!!airflowDagMap}
         showDagGroups={showDagGroups}
         onShowDagGroupsChange={setShowDagGroups}
+        onFocusNode={(nodeId) => setFocusNodeId(nodeId)}
         listAnimations
       />
 
@@ -534,17 +543,19 @@ export default function App() {
           </div>
         )}
 
-        {manifest && !loading && !filters.selectedModel && (
+        {manifest && !loading && !filters.selectedModel && !(filters.advancedMode && filters.focusedNodeIds?.length) && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Select a model or source from the sidebar to view its dependency graph
+                {filters.advancedMode
+                  ? 'Enter a dbt selector and click Resolve to view the dependency graph'
+                  : 'Select a model or source from the sidebar to view its dependency graph'}
               </p>
             </div>
           </div>
         )}
 
-        {manifest && !loading && filters.selectedModel && nodes.length > 0 && (
+        {manifest && !loading && (filters.selectedModel || (filters.advancedMode && filters.focusedNodeIds?.length)) && nodes.length > 0 && (
           <div className="absolute inset-0 flex">
             {/* Graph + search results column */}
             <div className="flex-1 flex flex-col min-w-0">
@@ -560,7 +571,7 @@ export default function App() {
                   <GraphCanvas
                   nodes={nodes}
                   edges={edges}
-                  selectedModel={filters.selectedModel}
+                  selectedModel={filters.advancedMode ? null : filters.selectedModel}
                   focusNodeId={focusNodeId}
                   onFocusHandled={() => setFocusNodeId(null)}
                   onNodeClick={(nodeId) => {
