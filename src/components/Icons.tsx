@@ -7,6 +7,17 @@ export function DbtIcon({ className = 'w-4 h-4' }: { className?: string }) {
   );
 }
 
+/** Database/source icon */
+export function SourceIcon({ className = 'w-4 h-4' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="12" cy="5" rx="9" ry="3" strokeWidth={1.5} className="stroke-teal-500" />
+      <path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5" strokeWidth={1.5} className="stroke-teal-500" />
+      <path d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3" strokeWidth={1.5} className="stroke-teal-500" />
+    </svg>
+  );
+}
+
 /** Apache Airflow logo (Streamline) */
 export function AirflowIcon({ className = 'w-4 h-4' }: { className?: string }) {
   return (

@@ -431,7 +431,8 @@ export default function App() {
     <div className="h-screen w-screen flex bg-gray-50 dark:bg-gray-950">
       <Sidebar
         modelNames={manifest?.modelNames || []}
-        models={manifest?.models ?? null}
+        sourceNames={manifest?.sourceNames || []}
+        allNodes={manifest?.allNodes ?? null}
         filters={filters}
         onFiltersChange={setFilters}
         nodeCount={nodes.length}
@@ -537,7 +538,7 @@ export default function App() {
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Select a model from the sidebar or search to view its dependency graph
+                Select a model or source from the sidebar to view its dependency graph
               </p>
             </div>
           </div>

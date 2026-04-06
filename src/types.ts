@@ -40,6 +40,7 @@ export interface PreProcessedManifest {
   parentMap: Record<string, string[]>;
   childMap: Record<string, string[]>;
   modelNames: string[];
+  sourceNames: string[];
 }
 
 export interface ParsedManifest {
@@ -49,6 +50,7 @@ export interface ParsedManifest {
   parentMap: Map<string, string[]>;
   childMap: Map<string, string[]>;
   modelNames: string[];
+  sourceNames: string[];
 }
 
 export interface FilterState {

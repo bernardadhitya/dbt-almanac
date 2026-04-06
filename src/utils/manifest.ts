@@ -8,5 +8,5 @@ export function hydrateManifest(data: PreProcessedManifest): ParsedManifest {
   const parentMap = new Map<string, string[]>(Object.entries(data.parentMap));
   const childMap = new Map<string, string[]>(Object.entries(data.childMap));
 
-  return { models, sources, allNodes, parentMap, childMap, modelNames: data.modelNames };
+  return { models, sources, allNodes, parentMap, childMap, modelNames: data.modelNames, sourceNames: data.sourceNames };
 }

@@ -9,7 +9,8 @@ const DEFAULT_WIDTH = 288;
 
 interface SidebarProps {
   modelNames: string[];
-  models: Map<string, SlimNode> | null;
+  sourceNames: string[];
+  allNodes: Map<string, SlimNode> | null;
   filters: FilterState;
   onFiltersChange: (filters: FilterState) => void;
   nodeCount: number;
@@ -23,7 +24,8 @@ interface SidebarProps {
 
 export function Sidebar({
   modelNames,
-  models,
+  sourceNames,
+  allNodes,
   filters,
   onFiltersChange,
   nodeCount,
@@ -121,11 +123,12 @@ export function Sidebar({
         </div>
       )}
 
-      {/* Model list */}
+      {/* Asset list (models + sources) */}
       <div className="flex-1 min-h-0 flex flex-col px-4 py-3">
         <ModelList
           modelNames={modelNames}
-          models={models}
+          sourceNames={sourceNames}
+          allNodes={allNodes}
           selectedModel={filters.selectedModel}
           onSelect={(name) => onFiltersChange({ ...filters, selectedModel: name })}
           listAnimations={listAnimations}

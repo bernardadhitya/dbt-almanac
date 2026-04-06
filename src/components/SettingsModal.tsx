@@ -311,7 +311,7 @@ export function SettingsModal({
                   {settings.airflowDagsPath && airflowDagCount !== null && (
                     <div className="flex items-center justify-between mt-2">
                       <p className="text-xs text-green-600 dark:text-green-400">
-                        {airflowDagCount} model{airflowDagCount !== 1 ? 's' : ''} mapped to Airflow DAGs
+                        {airflowDagCount} asset{airflowDagCount !== 1 ? 's' : ''} mapped to Airflow DAGs
                       </p>
                       <button
                         onClick={onClearAirflowDags}

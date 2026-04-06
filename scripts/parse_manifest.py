@@ -290,9 +290,10 @@ def main():
             if filtered:
                 child_map[uid] = filtered
 
-    # Step 6: Build sorted model names
-    progress("finalizing", "Sorting model names...")
+    # Step 6: Build sorted model and source names
+    progress("finalizing", "Sorting asset names...")
     model_names = sorted(m["name"] for m in models.values())
+    source_names = sorted(s["name"] for s in source_nodes.values())
 
     edge_count = sum(len(v) for v in parent_map.values())
     progress("done", f"Ready: {model_count:,} models, {len(source_nodes):,} sources, {edge_count:,} edges")
@@ -304,6 +305,7 @@ def main():
         "parentMap": parent_map,
         "childMap": child_map,
         "modelNames": model_names,
+        "sourceNames": source_names,
     }
 
     t_total = time.time() - t0
