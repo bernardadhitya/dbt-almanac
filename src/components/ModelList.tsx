@@ -1,13 +1,14 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { filterByRelevance } from '../utils/search';
-import { DbtIcon } from './Icons';
+import { DbtIcon, SourceIcon } from './Icons';
 import type { SlimNode } from '../types';
 
 type ViewMode = 'list' | 'card';
 
 interface ModelListProps {
   modelNames: string[];
-  models: Map<string, SlimNode> | null;
+  sourceNames: string[];
+  allNodes: Map<string, SlimNode> | null;
   selectedModel: string | null;
   onSelect: (name: string | null) => void;
   listAnimations?: boolean;
@@ -19,13 +20,17 @@ const OVERSCAN = 10;
 const DESC_MAX_LENGTH = 90;
 const SHUFFLE_DURATION = 300; // ms
 
-/** Find a SlimNode by model name (looks up by model.{name} key pattern) */
-function findNode(models: Map<string, SlimNode> | null, name: string): SlimNode | undefined {
-  if (!models) return undefined;
-  for (const [, node] of models) {
+/** Find a SlimNode by display name */
+function findNode(allNodes: Map<string, SlimNode> | null, name: string): SlimNode | undefined {
+  if (!allNodes) return undefined;
+  for (const [, node] of allNodes) {
     if (node.name === name) return node;
   }
   return undefined;
+}
+
+function isSource(name: string): boolean {
+  return name.startsWith('source:');
 }
 
 function MaterialBadge({ materialized }: { materialized?: string }) {
@@ -69,7 +74,7 @@ function CardViewIcon() {
  */
 type AnimPhase = 'idle' | 'prepare' | 'animate';
 
-export function ModelList({ modelNames, models, selectedModel, onSelect, listAnimations = true }: ModelListProps) {
+export function ModelList({ modelNames, sourceNames, allNodes, selectedModel, onSelect, listAnimations = true }: ModelListProps) {
   const [listFilter, setListFilter] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -85,10 +90,12 @@ export function ModelList({ modelNames, models, selectedModel, onSelect, listAni
 
   const itemHeight = viewMode === 'list' ? LIST_ITEM_HEIGHT : CARD_ITEM_HEIGHT;
 
+  const allNames = useMemo(() => [...modelNames, ...sourceNames], [modelNames, sourceNames]);
+
   const filtered = useMemo(() => {
-    if (!listFilter) return modelNames;
-    return filterByRelevance(modelNames, listFilter);
-  }, [modelNames, listFilter]);
+    if (!listFilter) return allNames;
+    return filterByRelevance(allNames, listFilter);
+  }, [allNames, listFilter]);
 
   // Build current position map and trigger shuffle animation
   useEffect(() => {
@@ -185,7 +192,7 @@ export function ModelList({ modelNames, models, selectedModel, onSelect, listAni
       <div className="flex items-center justify-between mb-2 px-4">
         <label className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
           <DbtIcon className="w-3.5 h-3.5" />
-          Models ({filtered.length.toLocaleString()})
+          Assets ({filtered.length.toLocaleString()})
         </label>
         <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-md p-0.5">
           <button
@@ -219,7 +226,7 @@ export function ModelList({ modelNames, models, selectedModel, onSelect, listAni
           type="text"
           value={listFilter}
           onChange={(e) => setListFilter(e.target.value)}
-          placeholder="Filter models..."
+          placeholder="Filter assets..."
           className="w-full px-2.5 py-1.5 mb-2 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </div>
@@ -260,6 +267,9 @@ export function ModelList({ modelNames, models, selectedModel, onSelect, listAni
               // 'idle' → no extra styles
             }
 
+            const isSrc = isSource(name);
+            const ItemIcon = isSrc ? SourceIcon : DbtIcon;
+
             if (viewMode === 'list') {
               return (
                 <button
@@ -279,15 +289,15 @@ export function ModelList({ modelNames, models, selectedModel, onSelect, listAni
                       : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                   }`}
                 >
-                  <DbtIcon className="w-3 h-3 shrink-0" />
+                  <ItemIcon className="w-3 h-3 shrink-0" />
                   <span className="truncate">{name}</span>
                 </button>
               );
             }
 
             // Card view
-            const node = findNode(models, name);
-            const desc = node?.description || '';
+            const node = findNode(allNodes, name);
+            const desc = node?.description || node?.source_description || '';
             const truncDesc = desc.length > DESC_MAX_LENGTH
               ? desc.slice(0, DESC_MAX_LENGTH).trimEnd() + '…'
               : desc;
@@ -312,7 +322,7 @@ export function ModelList({ modelNames, models, selectedModel, onSelect, listAni
               >
                 {/* Row 1: icon + name */}
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <DbtIcon className="w-3 h-3 shrink-0" />
+                  <ItemIcon className="w-3 h-3 shrink-0" />
                   <span className={`text-xs truncate ${
                     isActive
                       ? 'text-blue-700 dark:text-blue-300 font-semibold'
@@ -322,12 +332,20 @@ export function ModelList({ modelNames, models, selectedModel, onSelect, listAni
                   </span>
                 </div>
 
-                {/* Row 2: material badges */}
+                {/* Row 2: type badges */}
                 <div className="flex items-center gap-1 mt-0.5">
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium leading-none bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400">
-                    model
-                  </span>
-                  <MaterialBadge materialized={node?.materialized} />
+                  {isSrc ? (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium leading-none bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-400">
+                      source
+                    </span>
+                  ) : (
+                    <>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium leading-none bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400">
+                        model
+                      </span>
+                      <MaterialBadge materialized={node?.materialized} />
+                    </>
+                  )}
                 </div>
 
                 {/* Row 3: description */}

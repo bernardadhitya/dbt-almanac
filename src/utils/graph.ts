@@ -26,9 +26,9 @@ export function getFilteredNodeIds(
 ): Set<string> | null {
   if (!filters.selectedModel) return new Set<string>(); // empty = nothing to render
 
-  // Find the unique_id for the selected model name
-  const selectedId = Array.from(manifest.models.entries()).find(
-    ([, m]) => m.name === filters.selectedModel
+  // Find the unique_id for the selected asset name (model or source)
+  const selectedId = Array.from(manifest.allNodes.entries()).find(
+    ([, n]) => n.name === filters.selectedModel
   )?.[0];
 
   if (!selectedId) return new Set<string>();
