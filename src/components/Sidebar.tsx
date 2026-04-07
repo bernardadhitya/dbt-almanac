@@ -1,8 +1,10 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import { Filters } from './Filters';
 import { ModelList } from './ModelList';
+import { AdvancedSearch } from './AdvancedSearch';
 import { AirflowIcon } from './Icons';
-import { FilterState, SlimNode } from '../types';
+import { FilterState, SlimNode, ParsedManifest } from '../types';
+import type { SelectorResult } from '../utils/selector';
 
 const MIN_WIDTH = 240;
 const DEFAULT_WIDTH = 288;
@@ -11,6 +13,7 @@ interface SidebarProps {
   modelNames: string[];
   sourceNames: string[];
   allNodes: Map<string, SlimNode> | null;
+  manifest: ParsedManifest | null;
   filters: FilterState;
   onFiltersChange: (filters: FilterState) => void;
   nodeCount: number;
@@ -20,12 +23,14 @@ interface SidebarProps {
   showDagGroups: boolean;
   onShowDagGroupsChange: (show: boolean) => void;
   listAnimations?: boolean;
+  onFocusNode?: (nodeId: string) => void;
 }
 
 export function Sidebar({
   modelNames,
   sourceNames,
   allNodes,
+  manifest,
   filters,
   onFiltersChange,
   nodeCount,
@@ -35,8 +40,10 @@ export function Sidebar({
   showDagGroups,
   onShowDagGroupsChange,
   listAnimations = true,
+  onFocusNode,
 }: SidebarProps) {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const [selectorResult, setSelectorResult] = useState<SelectorResult | null>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
 
@@ -95,7 +102,10 @@ export function Sidebar({
         <Filters
           filters={filters}
           onChange={onFiltersChange}
-          disabled={!filters.selectedModel}
+          disabled={filters.advancedMode
+            ? !filters.focusedNodeIds || filters.focusedNodeIds.length === 0
+            : !filters.selectedModel
+          }
         />
       </div>
 
@@ -123,16 +133,56 @@ export function Sidebar({
         </div>
       )}
 
-      {/* Asset list (models + sources) */}
+      {/* Mode toggle: Assets / Selector */}
+      <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-md p-0.5">
+          <button
+            onClick={() => onFiltersChange({ ...filters, advancedMode: false })}
+            className={`flex-1 px-2 py-1 text-[11px] font-medium rounded transition-colors ${
+              !filters.advancedMode
+                ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+            }`}
+          >
+            Assets
+          </button>
+          <button
+            onClick={() => onFiltersChange({ ...filters, advancedMode: true })}
+            className={`flex-1 px-2 py-1 text-[11px] font-medium rounded transition-colors ${
+              filters.advancedMode
+                ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+            }`}
+          >
+            Selector
+          </button>
+        </div>
+      </div>
+
+      {/* Asset list or Advanced search */}
       <div className="flex-1 min-h-0 flex flex-col px-4 py-3">
-        <ModelList
-          modelNames={modelNames}
-          sourceNames={sourceNames}
-          allNodes={allNodes}
-          selectedModel={filters.selectedModel}
-          onSelect={(name) => onFiltersChange({ ...filters, selectedModel: name })}
-          listAnimations={listAnimations}
-        />
+        {filters.advancedMode ? (
+          <AdvancedSearch
+            manifest={manifest}
+            selectorExpression={filters.selectorExpression}
+            onExpressionChange={(expr) => onFiltersChange({ ...filters, selectorExpression: expr })}
+            onResolve={(focusedIds) => onFiltersChange({ ...filters, focusedNodeIds: focusedIds })}
+            onClear={() => onFiltersChange({ ...filters, focusedNodeIds: null, selectorExpression: '' })}
+            isActive={!!filters.focusedNodeIds && filters.focusedNodeIds.length > 0}
+            result={selectorResult}
+            onResultChange={setSelectorResult}
+            onFocusNode={onFocusNode}
+          />
+        ) : (
+          <ModelList
+            modelNames={modelNames}
+            sourceNames={sourceNames}
+            allNodes={allNodes}
+            selectedModel={filters.selectedModel}
+            onSelect={(name) => onFiltersChange({ ...filters, selectedModel: name })}
+            listAnimations={listAnimations}
+          />
+        )}
       </div>
 
       {/* Stats Footer */}

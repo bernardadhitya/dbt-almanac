@@ -24,6 +24,57 @@ export function getFilteredNodeIds(
   manifest: ParsedManifest,
   filters: FilterState
 ): Set<string> | null {
+  // Advanced mode: use pre-resolved focusedNodeIds as seeds
+  if (filters.advancedMode) {
+    if (!filters.focusedNodeIds || filters.focusedNodeIds.length === 0) {
+      return new Set<string>();
+    }
+
+    const seedIds = filters.focusedNodeIds.filter(id => manifest.allNodes.has(id));
+    if (seedIds.length === 0) return new Set<string>();
+
+    const visited = new Set<string>(seedIds);
+
+    // BFS upstream from all seeds simultaneously
+    {
+      let frontier = [...seedIds];
+      for (let depth = 0; depth < filters.upstreamLevel; depth++) {
+        const nextFrontier: string[] = [];
+        for (const nodeId of frontier) {
+          for (const parent of manifest.parentMap.get(nodeId) || []) {
+            if (!visited.has(parent) && manifest.allNodes.has(parent)) {
+              visited.add(parent);
+              nextFrontier.push(parent);
+            }
+          }
+        }
+        frontier = nextFrontier;
+        if (frontier.length === 0) break;
+      }
+    }
+
+    // BFS downstream from all seeds simultaneously
+    {
+      let frontier = [...seedIds];
+      for (let depth = 0; depth < filters.downstreamLevel; depth++) {
+        const nextFrontier: string[] = [];
+        for (const nodeId of frontier) {
+          for (const child of manifest.childMap.get(nodeId) || []) {
+            if (!visited.has(child) && manifest.allNodes.has(child)) {
+              visited.add(child);
+              nextFrontier.push(child);
+            }
+          }
+        }
+        frontier = nextFrontier;
+        if (frontier.length === 0) break;
+      }
+    }
+
+    return visited;
+  }
+
+  // Basic mode: single selected model/source
   if (!filters.selectedModel) return new Set<string>(); // empty = nothing to render
 
   // Find the unique_id for the selected asset name (model or source)
@@ -83,6 +134,7 @@ export function buildGraphData(
   selectedModelName: string | null,
   highlightedIds?: Set<string>,
   airflowDagMap?: AirflowDagMap | null,
+  focusedNodeIds?: Set<string> | null,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodeIds = filteredIds ?? new Set(manifest.allNodes.keys());
   const nodes: Node[] = [];
@@ -94,7 +146,9 @@ export function buildGraphData(
     if (!modelData) continue;
 
     const isSource = modelData.resource_type === 'source';
-    const isSelected = modelData.name === selectedModelName;
+    const isSelected = focusedNodeIds
+      ? focusedNodeIds.has(id)
+      : modelData.name === selectedModelName;
     const isHighlighted = highlightedIds ? highlightedIds.has(id) : false;
 
     nodes.push({
