@@ -694,6 +694,12 @@ export function SettingsModal({
                             </p>
                           </div>
                         </div>
+                        <button
+                          onClick={() => window.electronAPI.relaunchApp()}
+                          className="px-3 py-1.5 text-[11px] font-medium rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
+                        >
+                          Restart Now
+                        </button>
                       </div>
                     )}
 

@@ -126,6 +126,7 @@ declare global {
       checkForUpdate: () => Promise<{ available: boolean; info?: UpdateInfo; error?: string }>;
       downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
       installUpdate: () => Promise<{ success: boolean; error?: string; needsManual?: boolean; htmlUrl?: string }>;
+      relaunchApp: () => Promise<void>;
       onUpdateProgress: (callback: (data: { percent: number }) => void) => () => void;
       // Custom test definitions
       loadCustomTests: () => Promise<CustomTestDefinition[]>;
