@@ -270,7 +270,7 @@ export function NodeTooltip({ node, x, y, onMouseEnter, onMouseLeave, airflowDag
                         <span className="break-all">{dag.dagFile.replace(/\.py$/, '')}</span>
                         <span className="inline-flex align-middle ml-1"><CopyButton text={dag.dagFile.replace(/\.py$/, '')} label="DAG name" /></span>
                       </div>
-                      <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono break-all">
+                      <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate" title={dag.selector}>
                         {dag.selector}
                       </div>
                     </div>
@@ -306,7 +306,7 @@ export function NodeTooltip({ node, x, y, onMouseEnter, onMouseLeave, airflowDag
                         <td className="px-2 py-0.5 text-gray-800 dark:text-gray-200 font-mono truncate max-w-[140px]">
                           {col.name}
                         </td>
-                        <td className="px-2 py-0.5 text-gray-500 dark:text-gray-400 font-mono truncate max-w-[80px]">
+                        <td className="px-2 py-0.5 text-gray-500 dark:text-gray-400 font-mono truncate max-w-[80px]" title={col.type || undefined}>
                           {col.type || '—'}
                         </td>
                       </tr>
