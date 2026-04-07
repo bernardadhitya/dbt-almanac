@@ -10,6 +10,8 @@ interface NodeTooltipProps {
   onMouseEnter: () => void;
   onMouseLeave: () => void;
   airflowDags?: AirflowDagInfo[] | null;
+  /** Reports whether the tooltip rendered above or below the anchor point */
+  onPlacementResolved?: (placement: 'above' | 'below') => void;
 }
 
 const MAX_COLUMNS = 12;
@@ -82,7 +84,7 @@ function ExternalLinkIcon() {
   );
 }
 
-export function NodeTooltip({ node, x, y, onMouseEnter, onMouseLeave, airflowDags }: NodeTooltipProps) {
+export function NodeTooltip({ node, x, y, onMouseEnter, onMouseLeave, airflowDags, onPlacementResolved }: NodeTooltipProps) {
   const isSource = node.resource_type === 'source';
   const columns = node.columns || [];
   const [columnsExpanded, setColumnsExpanded] = useState(false);
@@ -112,11 +114,16 @@ export function NodeTooltip({ node, x, y, onMouseEnter, onMouseLeave, airflowDag
 
     // Vertical: above cursor by default
     let top = y - rect.height - OFFSET;
-    if (top < 8) top = y + OFFSET; // flip below if no room above
+    let placement: 'above' | 'below' = 'above';
+    if (top < 8) {
+      top = y + OFFSET; // flip below if no room above
+      placement = 'below';
+    }
     if (top + rect.height > vh - 8) top = vh - rect.height - 8;
 
     setPos({ left, top });
-  }, [x, y]);
+    onPlacementResolved?.(placement);
+  }, [x, y, onPlacementResolved]);
 
   return (
     <div

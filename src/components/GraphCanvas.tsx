@@ -37,19 +37,20 @@ interface GraphCanvasProps {
   focusNodeId?: string | null;
   onFocusHandled?: () => void;
   onNodeClick?: (nodeId: string) => void;
+  onHideNode?: (nodeId: string) => void;
   manifest?: ParsedManifest | null;
   airflowDagMap?: AirflowDagMap | null;
   showDagGroups?: boolean;
   edgeAnimations?: boolean;
 }
 
-function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel, focusNodeId, onFocusHandled, onNodeClick, manifest, airflowDagMap, showDagGroups, edgeAnimations = true }: GraphCanvasProps) {
+function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel, focusNodeId, onFocusHandled, onNodeClick, onHideNode, manifest, airflowDagMap, showDagGroups, edgeAnimations = true }: GraphCanvasProps) {
   // All nodes (model/source + dagGroup containers) live in one state.
   // DagGroup nodes are recomputed from model positions on every position change
   // so containers follow dragged nodes in real-time.
   const [nodes, setNodes] = useState<Node[]>(inputNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(inputEdges);
-  const { fitView, setCenter } = useReactFlow();
+  const { fitView, setCenter, flowToScreenPosition } = useReactFlow();
   const prevSelectedRef = useRef<string | null>(null);
 
   // Tooltip state: the visible tooltip's node ID + anchored position
@@ -60,6 +61,9 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
 
   // Hovered node for edge highlighting (set instantly, cleared with tooltip dismiss)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+
+  // Tooltip placement: 'above' or 'below' the node — used to position the hide button on the opposite side
+  const [tooltipPlacement, setTooltipPlacement] = useState<'above' | 'below'>('above');
 
   // Refs for hover timing
   const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -359,6 +363,33 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
     return () => clearAllTimers();
   }, [clearAllTimers]);
 
+  // Compute screen-space center of the hovered node for the hide button
+  const hideButtonPos = useMemo(() => {
+    if (!tooltip || !onHideNode) return null;
+    const node = nodes.find(n => n.id === tooltip.nodeId);
+    if (!node || node.type === 'dagGroup') return null;
+    // Approximate node dimensions (from ModelNode: px-3 py-2 + text)
+    const nodeW = node.measured?.width ?? 200;
+    const nodeH = node.measured?.height ?? 44;
+    const centerScreen = flowToScreenPosition({
+      x: node.position.x + nodeW / 2,
+      y: node.position.y + nodeH / 2,
+    });
+    return {
+      centerX: centerScreen.x,
+      topY: flowToScreenPosition({ x: 0, y: node.position.y }).y,
+      bottomY: flowToScreenPosition({ x: 0, y: node.position.y + nodeH }).y,
+    };
+  }, [tooltip, onHideNode, nodes, flowToScreenPosition]);
+
+  const handleHideNode = useCallback((nodeId: string) => {
+    // Clear tooltip and hover state, then notify parent
+    clearAllTimers();
+    setTooltip(null);
+    setHoveredNodeId(null);
+    onHideNode?.(nodeId);
+  }, [clearAllTimers, onHideNode]);
+
   const hoveredSlimNode = tooltip && manifest ? manifest.allNodes.get(tooltip.nodeId) : null;
   const hoveredAirflowDags = tooltip && airflowDagMap ? airflowDagMap[tooltip.nodeId] || null : null;
 
@@ -408,7 +439,39 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
           onMouseEnter={handleTooltipMouseEnter}
           onMouseLeave={handleTooltipMouseLeave}
           airflowDags={hoveredAirflowDags}
+          onPlacementResolved={setTooltipPlacement}
         />,
+        document.body
+      )}
+
+      {/* Hide Node button — centered on node, opposite side from tooltip */}
+      {hoveredSlimNode && tooltip && onHideNode && hideButtonPos && createPortal(
+        <div
+          className="fixed z-[99]"
+          style={{
+            left: hideButtonPos.centerX,
+            top: tooltipPlacement === 'above'
+              ? hideButtonPos.bottomY + 6   // tooltip is above → button below node
+              : hideButtonPos.topY - 34,    // tooltip is below → button above node
+            transform: 'translateX(-50%)',
+          }}
+          onMouseEnter={handleTooltipMouseEnter}
+          onMouseLeave={handleTooltipMouseLeave}
+        >
+          <button
+            onClick={() => handleHideNode(tooltip.nodeId)}
+            className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:bg-red-50 dark:hover:bg-red-950/80 hover:border-red-200 dark:hover:border-red-800 hover:text-red-500 dark:hover:text-red-400 shadow-md transition-colors cursor-pointer"
+            title="Hide node and downstream"
+          >
+            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 512 512">
+              <path d="M71.294,335.13c8.333,8.33,21.84,8.328,30.17-0.005c8.33-8.333,8.328-21.84-0.005-30.17l-48.953-48.936l74.001-74.001 c44.668-44.668,108.079-62.868,168.762-50.082c11.529,2.429,22.844-4.948,25.273-16.477s-4.948-22.844-16.477-25.273 c-74.65-15.728-152.755,6.688-207.729,61.662L7.248,240.936c-8.332,8.332-8.331,21.842,0.003,30.172L71.294,335.13z"/>
+              <path d="M506.77,240.913l-64.043-64.021c-8.333-8.33-21.84-8.328-30.17,0.005c-8.33,8.333-8.328,21.84,0.005,30.17l48.953,48.936 l-74.001,74.001c-44.668,44.669-108.079,62.868-168.762,50.082c-11.529-2.429-22.844,4.948-25.273,16.477 c-2.429,11.529,4.948,22.844,16.477,25.273c74.65,15.728,152.755-6.688,207.729-61.662l89.088-89.088 C515.105,262.753,515.104,249.243,506.77,240.913z"/>
+              <path d="M150.344,256.011c0,11.782,9.551,21.333,21.333,21.333c11.782,0,21.333-9.551,21.333-21.333c0-35.343,28.657-64,64-64 c11.782,0,21.333-9.551,21.333-21.333c0-11.782-9.551-21.333-21.333-21.333C198.103,149.344,150.344,197.103,150.344,256.011z"/>
+              <path d="M321.011,256.011c0,35.343-28.657,64-64,64c-11.782,0-21.333,9.551-21.333,21.333c0,11.782,9.551,21.333,21.333,21.333 c58.907,0,106.667-47.759,106.667-106.667c0-11.782-9.551-21.333-21.333-21.333C330.562,234.677,321.011,244.229,321.011,256.011z"/>
+              <path d="M506.762,6.259c-8.331-8.331-21.839-8.331-30.17,0L7.259,475.592c-8.331,8.331-8.331,21.839,0,30.17 c8.331,8.331,21.839,8.331,30.17,0L506.762,36.429C515.094,28.098,515.094,14.59,506.762,6.259z"/>
+            </svg>
+          </button>
+        </div>,
         document.body
       )}
 

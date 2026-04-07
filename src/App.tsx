@@ -6,7 +6,7 @@ import { KeywordSearch } from './components/KeywordSearch';
 import { SearchResults, MatchResult, buildSnippets } from './components/SearchResults';
 import { SettingsModal } from './components/SettingsModal';
 import { hydrateManifest } from './utils/manifest';
-import { buildGraphData, getFilteredNodeIds, COMPOUND_LAYOUT_MAX_NODES, PERF_MODE_THRESHOLD } from './utils/graph';
+import { buildGraphData, getFilteredNodeIds, getDownstreamDescendants, COMPOUND_LAYOUT_MAX_NODES, PERF_MODE_THRESHOLD } from './utils/graph';
 import { PerfModeToast } from './components/PerfModeToast';
 import { CopiedToast } from './components/CopiedToast';
 import { UpdateToast } from './components/UpdateToast';
@@ -119,6 +119,9 @@ export default function App() {
   const [activeResultNodeId, setActiveResultNodeId] = useState<string | null>(null);
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
   const [lastClickedNodeId, setLastClickedNodeId] = useState<string | null>(null);
+
+  // Hidden nodes state: root node IDs that the user has hidden (along with their downstream descendants)
+  const [hiddenRootIds, setHiddenRootIds] = useState<Set<string>>(new Set());
 
   // Airflow DAG state
   const [airflowDagMap, setAirflowDagMap] = useState<AirflowDagMap | null>(null);
@@ -364,15 +367,23 @@ export default function App() {
     }
   }, []);
 
-  // Close detail sidebar when selected asset(s) change (new graph rendered)
+  // Close detail sidebar and clear hidden nodes when selected asset(s) or mode change
   useEffect(() => {
     setDetailNodeId(null);
-  }, [filters.selectedModel, filters.focusedNodeIds]);
+    setHiddenRootIds(new Set());
+  }, [filters.selectedModel, filters.focusedNodeIds, filters.advancedMode]);
 
   // Compute which visible node IDs match the keyword in their raw_code
   const { filteredIds, highlightedIds } = useMemo(() => {
     if (!manifest) return { filteredIds: null, highlightedIds: new Set<string>() };
-    const fIds = getFilteredNodeIds(manifest, filters);
+    let fIds = getFilteredNodeIds(manifest, filters);
+
+    // Apply hidden-node exclusion: remove hidden roots and all their downstream descendants
+    if (fIds && hiddenRootIds.size > 0) {
+      const toExclude = getDownstreamDescendants(hiddenRootIds, manifest.childMap, fIds);
+      fIds = new Set([...fIds].filter(id => !toExclude.has(id)));
+    }
+
     if (!keyword.trim() || !fIds) return { filteredIds: fIds, highlightedIds: new Set<string>() };
 
     const q = keyword.toLowerCase();
@@ -384,7 +395,7 @@ export default function App() {
       }
     }
     return { filteredIds: fIds, highlightedIds: hIds };
-  }, [manifest, filters, keyword]);
+  }, [manifest, filters, keyword, hiddenRootIds]);
 
   // Build match results with context snippets for each highlighted node
   const matchResults = useMemo<MatchResult[]>(() => {
@@ -434,6 +445,36 @@ export default function App() {
 
   const airflowDagCount = airflowDagMap ? Object.keys(airflowDagMap).length : null;
 
+  // Compute hidden node info for sidebar cards
+  const hiddenNodeInfos = useMemo(() => {
+    if (!manifest || hiddenRootIds.size === 0) return [];
+    return [...hiddenRootIds].map(rootId => {
+      const node = manifest.allNodes.get(rootId);
+      const descendants = getDownstreamDescendants(new Set([rootId]), manifest.childMap, filteredIds ? new Set([...filteredIds, rootId]) : null);
+      return {
+        nodeId: rootId,
+        nodeName: node?.name || rootId,
+        descendantCount: descendants.size - 1, // subtract the root itself
+      };
+    });
+  }, [manifest, hiddenRootIds, filteredIds]);
+
+  const handleHideNode = useCallback((nodeId: string) => {
+    setHiddenRootIds(prev => {
+      const next = new Set(prev);
+      next.add(nodeId);
+      return next;
+    });
+  }, []);
+
+  const handleUnhideNode = useCallback((nodeId: string) => {
+    setHiddenRootIds(prev => {
+      const next = new Set(prev);
+      next.delete(nodeId);
+      return next;
+    });
+  }, []);
+
   return (
     <div className="h-screen w-screen flex bg-gray-50 dark:bg-gray-950">
       <Sidebar
@@ -451,6 +492,8 @@ export default function App() {
         onShowDagGroupsChange={setShowDagGroups}
         onFocusNode={(nodeId) => setFocusNodeId(nodeId)}
         listAnimations
+        hiddenNodes={hiddenNodeInfos}
+        onUnhideNode={handleUnhideNode}
       />
 
       <div className="flex-1 relative">
@@ -574,6 +617,7 @@ export default function App() {
                   selectedModel={filters.advancedMode ? null : filters.selectedModel}
                   focusNodeId={focusNodeId}
                   onFocusHandled={() => setFocusNodeId(null)}
+                  onHideNode={handleHideNode}
                   onNodeClick={(nodeId) => {
                     // If detail sidebar is already open, always update it
                     if (detailNodeId) {
