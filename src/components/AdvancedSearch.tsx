@@ -224,6 +224,20 @@ export function AdvancedSearch({
         </div>
       </div>
 
+      {/* Result summary */}
+      {result && matchedAssets.length > 0 && (
+        <div className="px-4 mb-1.5">
+          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+            Matched <span className="font-medium text-gray-700 dark:text-gray-300">{matchedAssets.length}</span> asset{matchedAssets.length !== 1 ? 's' : ''}
+            {result.nodeIds.length > result.seedIds.length && (
+              <span className="text-gray-400 dark:text-gray-500">
+                {' '}({result.nodeIds.length} with dependencies)
+              </span>
+            )}
+          </span>
+        </div>
+      )}
+
       {/* Error message */}
       {result?.error && (
         <div className="px-4 mb-2">
