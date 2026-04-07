@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdate: () => ipcRenderer.invoke('check-for-update'),
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
   installUpdate: () => ipcRenderer.invoke('install-update'),
+  relaunchApp: () => ipcRenderer.invoke('relaunch-app'),
   onUpdateProgress: (callback: (data: { percent: number }) => void) => {
     const handler = (_event: any, data: { percent: number }) => callback(data);
     ipcRenderer.on('update-progress', handler);

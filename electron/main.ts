@@ -45,7 +45,11 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  // Clean up stale update artifacts from previous sessions
+  cleanupUpdateArtifacts();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -64,6 +68,35 @@ function sendProgress(step: string, detail: string) {
 function sendUpdateProgress(percent: number) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('update-progress', { percent });
+  }
+}
+
+/**
+ * Clean up leftover update artifacts from previous sessions.
+ * Runs on every app launch so crashes or aborts never leave debris.
+ */
+function cleanupUpdateArtifacts() {
+  try {
+    const updateDir = path.join(app.getPath('userData'), 'updates');
+    if (fs.existsSync(updateDir)) {
+      process.noAsar = true;
+      fs.rmSync(updateDir, { recursive: true, force: true });
+      process.noAsar = false;
+    }
+    // Also clean up any stale .bak from a crashed install
+    if (app.isPackaged) {
+      const currentAppPath = path.resolve(app.getAppPath(), '..', '..', '..');
+      const bakPath = `${currentAppPath}.bak`;
+      if (fs.existsSync(bakPath)) {
+        try {
+          execSync(`rm -rf "${bakPath}"`, { timeout: 10000 });
+        } catch {
+          // Best effort — may need elevated privileges; ignore
+        }
+      }
+    }
+  } catch {
+    // Non-critical — don't prevent app from starting
   }
 }
 
@@ -126,8 +159,10 @@ function fetchJson(url: string): Promise<any> {
 // Helper: Download a file with progress reporting
 // Follows redirects (GitHub asset URLs redirect to S3)
 // ────────────────────────────────────────────────────
-function downloadFile(url: string, destPath: string): Promise<void> {
+function downloadFile(url: string, destPath: string, retries = 2): Promise<void> {
   return new Promise((resolve, reject) => {
+    let attempt = 0;
+
     const makeRequest = (downloadUrl: string) => {
       const mod = downloadUrl.startsWith('https') ? https : require('http');
       const req = mod.get(downloadUrl, { headers: { 'User-Agent': 'Almanac-Updater' } }, (res: any) => {
@@ -147,10 +182,37 @@ function downloadFile(url: string, destPath: string): Promise<void> {
           }
         });
         res.pipe(file);
-        file.on('finish', () => { file.close(); resolve(); });
+        file.on('close', () => {
+          // Verify we got a non-empty file
+          try {
+            const stat = fs.statSync(destPath);
+            if (stat.size === 0) {
+              fs.unlinkSync(destPath);
+              return reject(new Error('Downloaded file is empty'));
+            }
+            // If we know the expected size, verify it matches
+            if (totalBytes > 0 && stat.size < totalBytes) {
+              fs.unlinkSync(destPath);
+              return reject(new Error(`Incomplete download: got ${stat.size} of ${totalBytes} bytes`));
+            }
+          } catch (statErr: any) {
+            return reject(new Error(`Could not verify download: ${statErr.message}`));
+          }
+          resolve();
+        });
         file.on('error', (err: Error) => { fs.unlink(destPath, () => {}); reject(err); });
+        res.on('error', (err: Error) => { file.destroy(); fs.unlink(destPath, () => {}); reject(err); });
       });
-      req.on('error', reject);
+      req.on('error', (err: Error) => {
+        // Retry on transient network errors
+        if (attempt < retries) {
+          attempt++;
+          console.warn(`Download attempt ${attempt} failed (${err.message}), retrying...`);
+          setTimeout(() => makeRequest(url), 1000 * attempt);
+        } else {
+          reject(new Error(`Download failed after ${retries + 1} attempts: ${err.message}`));
+        }
+      });
       req.setTimeout(300000, () => { req.destroy(); reject(new Error('Download timed out')); });
     };
     makeRequest(url);
@@ -524,6 +586,20 @@ ipcMain.handle('install-update', async () => {
   process.noAsar = true;
 
   try {
+    // Validate the zip before extracting
+    try {
+      execSync(`unzip -t -q "${downloadedUpdatePath}"`, { timeout: 30000 });
+    } catch {
+      // Corrupt or incomplete zip
+      try { fs.unlinkSync(downloadedUpdatePath); } catch { /* ignore */ }
+      downloadedUpdatePath = null;
+      return {
+        success: false,
+        error: 'Downloaded update is corrupted. Please try again.',
+        htmlUrl: pendingUpdate?.htmlUrl,
+      };
+    }
+
     // Clean up previous extraction
     if (fs.existsSync(extractDir)) {
       fs.rmSync(extractDir, { recursive: true, force: true });
@@ -556,6 +632,29 @@ ipcMain.handle('install-update', async () => {
       return { success: false, error: 'Could not find .app bundle in the downloaded update.' };
     }
 
+    // Verify the new app has a valid Info.plist with a version
+    try {
+      const plistPath = path.join(newAppPath, 'Contents', 'Info.plist');
+      if (!fs.existsSync(plistPath)) {
+        return { success: false, error: 'Downloaded app bundle is invalid (missing Info.plist).' };
+      }
+      // Optionally verify version matches what we expected
+      if (pendingUpdate) {
+        const plistContent = fs.readFileSync(plistPath, 'utf-8');
+        const versionMatch = plistContent.match(/<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/);
+        if (versionMatch) {
+          const extractedVersion = versionMatch[1].replace(/^v/, '');
+          const expectedVersion = pendingUpdate.version.replace(/^v/, '');
+          if (extractedVersion !== expectedVersion) {
+            console.warn(`Version mismatch: expected ${expectedVersion}, got ${extractedVersion}. Proceeding anyway.`);
+          }
+        }
+      }
+    } catch (plistErr: any) {
+      console.warn('Could not verify new app version:', plistErr.message);
+      // Non-fatal — continue with install
+    }
+
     // Determine the current app location
     // In packaged mode: /Applications/Almanac.app/Contents/MacOS/Almanac
     // app.getAppPath() returns .../Contents/Resources/app.asar
@@ -567,6 +666,18 @@ ipcMain.handle('install-update', async () => {
       return {
         success: false,
         error: 'Cannot determine app install location. Please update manually.',
+        needsManual: true,
+        htmlUrl: pendingUpdate?.htmlUrl,
+      };
+    }
+
+    // Check if app is on a read-only volume (e.g. running directly from a DMG)
+    try {
+      fs.accessSync(path.dirname(currentAppPath), fs.constants.W_OK);
+    } catch {
+      return {
+        success: false,
+        error: 'The app is installed on a read-only volume (e.g. a disk image). Please move Almanac to your Applications folder first, then try updating again.',
         needsManual: true,
         htmlUrl: pendingUpdate?.htmlUrl,
       };
@@ -595,7 +706,8 @@ ipcMain.handle('install-update', async () => {
       execSync(`rm -rf "${currentAppPath}.bak"`, { timeout: 10000 });
       execSync(`mv "${currentAppPath}" "${currentAppPath}.bak"`, { timeout: 10000 });
       execSync(`mv "${newAppPath}" "${currentAppPath}"`, { timeout: 10000 });
-      execSync(`rm -rf "${currentAppPath}.bak"`, { timeout: 10000 });
+      // Don't delete backup immediately — cleanupUpdateArtifacts() handles it on next launch
+      // in case the new app fails to start
     } catch {
       // Without sudo failed — try with elevated privileges via osascript
       try {
@@ -608,7 +720,6 @@ ipcMain.handle('install-update', async () => {
           `rm -rf "${currentAppPath}.bak"`,
           `mv "${currentAppPath}" "${currentAppPath}.bak"`,
           `mv "${newAppPath}" "${currentAppPath}"`,
-          `rm -rf "${currentAppPath}.bak"`,
         ].join(' && ');
 
         execSync(
@@ -633,7 +744,7 @@ ipcMain.handle('install-update', async () => {
       }
     }
 
-    // Clean up
+    // Clean up download artifacts (keep .bak — cleaned on next launch)
     try {
       fs.rmSync(extractDir, { recursive: true, force: true });
       if (downloadedUpdatePath) fs.unlinkSync(downloadedUpdatePath);
@@ -652,4 +763,9 @@ ipcMain.handle('install-update', async () => {
   } finally {
     process.noAsar = prevNoAsar;
   }
+});
+
+ipcMain.handle('relaunch-app', () => {
+  app.relaunch();
+  app.exit(0);
 });
