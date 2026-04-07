@@ -396,7 +396,10 @@ export function DetailSidebar({ node, airflowDags, onClose }: DetailSidebarProps
                         {col.name}
                       </span>
                       {col.type && (
-                        <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500 shrink-0">
+                        <span
+                          className="text-[10px] font-mono text-gray-400 dark:text-gray-500 truncate max-w-[50%]"
+                          title={col.type}
+                        >
                           {col.type}
                         </span>
                       )}
