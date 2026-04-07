@@ -348,7 +348,7 @@ export function DetailSidebar({ node, airflowDags, onClose }: DetailSidebarProps
                         <CopyButton text={dag.dagFile.replace(/\.py$/, '')} label="DAG name" />
                       </span>
                     </div>
-                    <div className="text-[11px] text-gray-400 dark:text-gray-500 font-mono break-all mt-0.5">
+                    <div className="text-[11px] text-gray-400 dark:text-gray-500 font-mono mt-0.5 truncate" title={dag.selector}>
                       {dag.selector}
                     </div>
                     {dag.schedule && (
