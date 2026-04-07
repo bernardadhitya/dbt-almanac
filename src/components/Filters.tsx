@@ -7,31 +7,32 @@ interface FiltersProps {
   disabled: boolean;
 }
 
-const MIN_LEVEL = 1;
+const MIN_LEVEL = 0;
 const MAX_LEVEL = 5;
-const TOTAL_STEPS = MAX_LEVEL * 2; // 10 stops: 5 upstream + 5 downstream
+const CENTER = MAX_LEVEL + 1;            // position 6
+const TOTAL_STEPS = CENTER * 2;          // 12: positions 0–12
 
 /**
- * Map upstream/downstream levels (each 1–5) to the 0–10 abstract track:
- *   position 0 = upstream 5  (leftmost)
- *   position 4 = upstream 1  (just left of center)
- *   position 5 = center (the selected model)
- *   position 6 = downstream 1 (just right of center)
- *   position 10 = downstream 5 (rightmost)
+ * Map upstream/downstream levels (each 0–5) to the 0–12 abstract track:
+ *   position 0  = upstream 5   (leftmost)
+ *   position 5  = upstream 0   (just left of center)
+ *   position 6  = center (the selected model)
+ *   position 7  = downstream 0 (just right of center)
+ *   position 12 = downstream 5 (rightmost)
  *
- * The left handle lives in [0..4], right handle in [6..10].
+ * The left handle lives in [0..5], right handle in [7..12].
  */
 function upstreamToPos(level: number): number {
-  return MAX_LEVEL - level; // 5→0, 4→1, … 1→4
+  return MAX_LEVEL - level; // 5→0, 4→1, … 0→5
 }
 function posToUpstream(pos: number): number {
-  return MAX_LEVEL - pos; // 0→5, 1→4, … 4→1
+  return MAX_LEVEL - pos; // 0→5, 1→4, … 5→0
 }
 function downstreamToPos(level: number): number {
-  return MAX_LEVEL + level; // 1→6, 2→7, … 5→10
+  return CENTER + 1 + level; // 0→7, 1→8, … 5→12
 }
 function posToDownstream(pos: number): number {
-  return pos - MAX_LEVEL; // 6→1, 7→2, … 10→5
+  return pos - CENTER - 1; // 7→0, 8→1, … 12→5
 }
 
 export function Filters({ filters, onChange, disabled }: FiltersProps) {
@@ -61,8 +62,8 @@ export function Filters({ filters, onChange, disabled }: FiltersProps) {
     const pos = clientXToPos(e.clientX);
 
     if (dragging === 'left') {
-      // Left handle: clamp to [0..4] (upstream 5..1)
-      const clamped = Math.max(0, Math.min(MAX_LEVEL - MIN_LEVEL, pos));
+      // Left handle: clamp to [0..5] (upstream 5..0)
+      const clamped = Math.max(0, Math.min(MAX_LEVEL, pos));
       const newUpstream = posToUpstream(clamped);
       if (newUpstream !== filters.upstreamLevel) {
         onChange({
@@ -72,8 +73,8 @@ export function Filters({ filters, onChange, disabled }: FiltersProps) {
         });
       }
     } else {
-      // Right handle: clamp to [6..10] (downstream 1..5)
-      const clamped = Math.max(MAX_LEVEL + MIN_LEVEL, Math.min(TOTAL_STEPS, pos));
+      // Right handle: clamp to [7..12] (downstream 0..5)
+      const clamped = Math.max(CENTER + 1, Math.min(TOTAL_STEPS, pos));
       const newDownstream = posToDownstream(clamped);
       if (newDownstream !== filters.downstreamLevel) {
         onChange({
@@ -99,12 +100,12 @@ export function Filters({ filters, onChange, disabled }: FiltersProps) {
 
   const leftPct = (leftPos / TOTAL_STEPS) * 100;
   const rightPct = (rightPos / TOTAL_STEPS) * 100;
-  const centerPct = (MAX_LEVEL / TOTAL_STEPS) * 100; // 50%
+  const centerPct = (CENTER / TOTAL_STEPS) * 100; // 50%
 
-  // Tick labels: 5 4 3 2 1 · 1 2 3 4 5
+  // Tick labels: 5 4 3 2 1 0 · 0 1 2 3 4 5
   const ticks = Array.from({ length: TOTAL_STEPS + 1 }, (_, i) => {
-    if (i === MAX_LEVEL) return null; // center dot handled separately
-    const label = i < MAX_LEVEL ? MAX_LEVEL - i : i - MAX_LEVEL;
+    if (i === CENTER) return null; // center dot handled separately
+    const label = i < CENTER ? MAX_LEVEL - i : i - CENTER - 1;
     return { pos: i, label };
   }).filter(Boolean) as { pos: number; label: number }[];
 
