@@ -128,6 +128,32 @@ export function getFilteredNodeIds(
   return visited;
 }
 
+/**
+ * BFS to find all downstream descendants of a set of root nodes.
+ * Optionally scoped to a set of visible IDs (e.g. filteredIds).
+ */
+export function getDownstreamDescendants(
+  rootIds: Set<string>,
+  childMap: Map<string, string[]>,
+  scope?: Set<string> | null,
+): Set<string> {
+  const excluded = new Set<string>(rootIds);
+  let frontier = [...rootIds];
+  while (frontier.length > 0) {
+    const nextFrontier: string[] = [];
+    for (const nodeId of frontier) {
+      for (const child of childMap.get(nodeId) || []) {
+        if (!excluded.has(child) && (!scope || scope.has(child))) {
+          excluded.add(child);
+          nextFrontier.push(child);
+        }
+      }
+    }
+    frontier = nextFrontier;
+  }
+  return excluded;
+}
+
 export function buildGraphData(
   manifest: ParsedManifest,
   filteredIds: Set<string> | null,
