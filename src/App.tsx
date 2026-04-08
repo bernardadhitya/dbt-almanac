@@ -105,6 +105,7 @@ export default function App() {
     selectedModel: null,
     advancedMode: false,
     selectorExpression: '',
+    excludeExpression: '',
     focusedNodeIds: null,
     upstreamLevel: 3,
     downstreamLevel: 3,

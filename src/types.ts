@@ -57,6 +57,7 @@ export interface FilterState {
   selectedModel: string | null;
   advancedMode: boolean;
   selectorExpression: string;
+  excludeExpression: string;
   focusedNodeIds: string[] | null;  // resolved unique_ids from selector
   upstreamLevel: number;   // 1–5
   downstreamLevel: number; // 1–5
