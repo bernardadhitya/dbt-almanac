@@ -54,6 +54,7 @@ export function Sidebar({
 }: SidebarProps) {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [selectorResult, setSelectorResult] = useState<SelectorResult | null>(null);
+  const [assetTypeFilter, setAssetTypeFilter] = useState<Set<string>>(new Set(['model', 'source']));
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
 
@@ -222,6 +223,8 @@ export function Sidebar({
             result={selectorResult}
             onResultChange={setSelectorResult}
             onFocusNode={onFocusNode}
+            assetTypeFilter={assetTypeFilter}
+            onAssetTypeFilterChange={setAssetTypeFilter}
           />
         ) : (
           <ModelList
@@ -231,6 +234,8 @@ export function Sidebar({
             selectedModel={filters.selectedModel}
             onSelect={(name) => onFiltersChange({ ...filters, selectedModel: name })}
             listAnimations={listAnimations}
+            assetTypeFilter={assetTypeFilter}
+            onAssetTypeFilterChange={setAssetTypeFilter}
           />
         )}
       </div>
