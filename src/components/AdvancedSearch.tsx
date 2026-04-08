@@ -9,7 +9,9 @@ type ViewMode = 'list' | 'card';
 interface AdvancedSearchProps {
   manifest: ParsedManifest | null;
   selectorExpression: string;
+  excludeExpression: string;
   onExpressionChange: (expr: string) => void;
+  onExcludeExpressionChange: (expr: string) => void;
   onResolve: (focusedIds: string[], seedIds: string[]) => void;
   onClear: () => void;
   isActive: boolean;
@@ -73,7 +75,9 @@ interface MatchedAsset {
 export function AdvancedSearch({
   manifest,
   selectorExpression,
+  excludeExpression,
   onExpressionChange,
+  onExcludeExpressionChange,
   onResolve,
   onClear,
   isActive,
@@ -86,13 +90,13 @@ export function AdvancedSearch({
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const selectRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isResolvingRef = useRef(false);
 
-  // Focus input on mount
+  // Focus select input on mount
   useEffect(() => {
-    inputRef.current?.focus();
+    selectRef.current?.focus();
   }, []);
 
   // Measure container
@@ -126,18 +130,46 @@ export function AdvancedSearch({
     isResolvingRef.current = true;
 
     requestAnimationFrame(() => {
-      const res = resolveSelector(manifest, selectorExpression.trim());
-      onResultChange(res);
+      // Resolve the main select expression
+      const selectResult = resolveSelector(manifest, selectorExpression.trim());
+
+      // If there's an exclude expression, resolve it and subtract
+      let finalNodeIds = selectResult.nodeIds;
+      let finalSeedIds = selectResult.seedIds;
+      let excludeError: string | null = null;
+
+      if (excludeExpression.trim() && selectResult.nodeIds.length > 0) {
+        const excludeResult = resolveSelector(manifest, excludeExpression.trim());
+        if (excludeResult.error) {
+          excludeError = `Exclude: ${excludeResult.error}`;
+        }
+        if (excludeResult.seedIds.length > 0) {
+          const excludeSet = new Set(excludeResult.seedIds);
+          finalSeedIds = finalSeedIds.filter(id => !excludeSet.has(id));
+          // Also remove excluded seeds from nodeIds (the full graph expansion)
+          const excludeNodeSet = new Set(excludeResult.nodeIds);
+          finalNodeIds = finalNodeIds.filter(id => !excludeNodeSet.has(id));
+        }
+      }
+
+      const combinedResult: SelectorResult = {
+        nodeIds: finalNodeIds,
+        seedIds: finalSeedIds,
+        error: selectResult.error || excludeError,
+      };
+
+      onResultChange(combinedResult);
       isResolvingRef.current = false;
 
-      if (res.nodeIds.length > 0) {
-        onResolve(res.nodeIds, res.seedIds);
+      if (combinedResult.nodeIds.length > 0) {
+        onResolve(combinedResult.nodeIds, combinedResult.seedIds);
       }
     });
-  }, [manifest, selectorExpression, onResolve, onResultChange, onClear]);
+  }, [manifest, selectorExpression, excludeExpression, onResolve, onResultChange, onClear]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    // Enter (without Shift) executes; Shift+Enter inserts newline
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleResolve();
     }
@@ -211,26 +243,47 @@ export function AdvancedSearch({
         </div>
       </div>
 
-      {/* Selector input + Execute button */}
+      {/* Select input */}
       <div className="px-4">
-        <div className="flex gap-1.5 mb-2">
-          <input
-            ref={inputRef}
-            type="text"
-            value={selectorExpression}
-            onChange={(e) => onExpressionChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="e.g. +my_model tag:daily"
-            className="flex-1 px-2.5 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-          />
-          <button
-            onClick={handleResolve}
-            disabled={!manifest}
-            className="shrink-0 px-2.5 py-1.5 text-[11px] font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Execute
-          </button>
+        <div className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">
+          Select
         </div>
+        <textarea
+          ref={selectRef}
+          value={selectorExpression}
+          onChange={(e) => onExpressionChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="e.g. +my_model tag:daily"
+          rows={2}
+          className="w-full px-2.5 py-1.5 mb-2 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono resize-none overflow-y-auto"
+        />
+      </div>
+
+      {/* Exclude input */}
+      <div className={`px-4 ${!selectorExpression.trim() ? 'opacity-40 pointer-events-none' : ''}`}>
+        <div className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">
+          Exclude
+        </div>
+        <textarea
+          value={excludeExpression}
+          onChange={(e) => onExcludeExpressionChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="e.g. tag:deprecated source:*"
+          rows={2}
+          disabled={!selectorExpression.trim()}
+          className="w-full px-2.5 py-1.5 mb-2 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono resize-none overflow-y-auto disabled:cursor-not-allowed"
+        />
+      </div>
+
+      {/* Execute button */}
+      <div className="px-4 mb-2">
+        <button
+          onClick={handleResolve}
+          disabled={!manifest}
+          className="w-full px-2.5 py-1.5 text-[11px] font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          Execute
+        </button>
       </div>
 
       {/* Result summary */}

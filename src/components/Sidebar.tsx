@@ -216,9 +216,11 @@ export function Sidebar({
           <AdvancedSearch
             manifest={manifest}
             selectorExpression={filters.selectorExpression}
+            excludeExpression={filters.excludeExpression}
             onExpressionChange={(expr) => onFiltersChange({ ...filters, selectorExpression: expr })}
+            onExcludeExpressionChange={(expr) => onFiltersChange({ ...filters, excludeExpression: expr })}
             onResolve={(focusedIds) => onFiltersChange({ ...filters, focusedNodeIds: focusedIds })}
-            onClear={() => onFiltersChange({ ...filters, focusedNodeIds: null, selectorExpression: '' })}
+            onClear={() => onFiltersChange({ ...filters, focusedNodeIds: null, selectorExpression: '', excludeExpression: '' })}
             isActive={!!filters.focusedNodeIds && filters.focusedNodeIds.length > 0}
             result={selectorResult}
             onResultChange={setSelectorResult}
