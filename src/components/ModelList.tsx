@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { filterByRelevance } from '../utils/search';
 import { DbtIcon, SourceIcon } from './Icons';
+import { AssetTypeFilter } from './AssetTypeFilter';
 import type { SlimNode } from '../types';
 
 type ViewMode = 'list' | 'card';
@@ -12,6 +13,8 @@ interface ModelListProps {
   selectedModel: string | null;
   onSelect: (name: string | null) => void;
   listAnimations?: boolean;
+  assetTypeFilter: Set<string>;
+  onAssetTypeFilterChange: (filter: Set<string>) => void;
 }
 
 const LIST_ITEM_HEIGHT = 32;
@@ -74,7 +77,7 @@ function CardViewIcon() {
  */
 type AnimPhase = 'idle' | 'prepare' | 'animate';
 
-export function ModelList({ modelNames, sourceNames, allNodes, selectedModel, onSelect, listAnimations = true }: ModelListProps) {
+export function ModelList({ modelNames, sourceNames, allNodes, selectedModel, onSelect, listAnimations = true, assetTypeFilter, onAssetTypeFilterChange }: ModelListProps) {
   const [listFilter, setListFilter] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -90,7 +93,12 @@ export function ModelList({ modelNames, sourceNames, allNodes, selectedModel, on
 
   const itemHeight = viewMode === 'list' ? LIST_ITEM_HEIGHT : CARD_ITEM_HEIGHT;
 
-  const allNames = useMemo(() => [...modelNames, ...sourceNames], [modelNames, sourceNames]);
+  const allNames = useMemo(() => {
+    const names: string[] = [];
+    if (assetTypeFilter.has('model')) names.push(...modelNames);
+    if (assetTypeFilter.has('source')) names.push(...sourceNames);
+    return names;
+  }, [modelNames, sourceNames, assetTypeFilter]);
 
   const filtered = useMemo(() => {
     if (!listFilter) return allNames;
@@ -194,29 +202,32 @@ export function ModelList({ modelNames, sourceNames, allNodes, selectedModel, on
           <DbtIcon className="w-3.5 h-3.5" />
           Assets ({filtered.length.toLocaleString()})
         </label>
-        <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-md p-0.5">
-          <button
-            onClick={() => setViewMode('list')}
-            className={`p-1 rounded transition-colors ${
-              viewMode === 'list'
-                ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
-            }`}
-            title="List view"
-          >
-            <ListViewIcon />
-          </button>
-          <button
-            onClick={() => setViewMode('card')}
-            className={`p-1 rounded transition-colors ${
-              viewMode === 'card'
-                ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
-            }`}
-            title="Card view"
-          >
-            <CardViewIcon />
-          </button>
+        <div className="flex items-center gap-1">
+          <AssetTypeFilter filter={assetTypeFilter} onChange={onAssetTypeFilterChange} />
+          <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-md p-0.5">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1 rounded transition-colors ${
+                viewMode === 'list'
+                  ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                  : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+              }`}
+              title="List view"
+            >
+              <ListViewIcon />
+            </button>
+            <button
+              onClick={() => setViewMode('card')}
+              className={`p-1 rounded transition-colors ${
+                viewMode === 'card'
+                  ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                  : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+              }`}
+              title="Card view"
+            >
+              <CardViewIcon />
+            </button>
+          </div>
         </div>
       </div>
 

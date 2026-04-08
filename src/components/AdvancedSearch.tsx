@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { resolveSelector, SelectorResult } from '../utils/selector';
 import { DbtIcon, SourceIcon } from './Icons';
+import { AssetTypeFilter } from './AssetTypeFilter';
 import type { ParsedManifest, SlimNode } from '../types';
 
 type ViewMode = 'list' | 'card';
@@ -15,6 +16,8 @@ interface AdvancedSearchProps {
   result: SelectorResult | null;
   onResultChange: (result: SelectorResult | null) => void;
   onFocusNode?: (nodeId: string) => void;
+  assetTypeFilter: Set<string>;
+  onAssetTypeFilterChange: (filter: Set<string>) => void;
 }
 
 const LIST_ITEM_HEIGHT = 32;
@@ -77,6 +80,8 @@ export function AdvancedSearch({
   result,
   onResultChange,
   onFocusNode,
+  assetTypeFilter,
+  onAssetTypeFilterChange,
 }: AdvancedSearchProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [scrollTop, setScrollTop] = useState(0);
@@ -151,11 +156,12 @@ export function AdvancedSearch({
           node,
         };
       })
+      .filter(a => assetTypeFilter.has(a.isSrc ? 'source' : 'model'))
       .sort((a, b) => {
         if (a.isSrc !== b.isSrc) return a.isSrc ? 1 : -1;
         return a.name.localeCompare(b.name);
       });
-  }, [result, manifest]);
+  }, [result, manifest, assetTypeFilter]);
 
   const itemHeight = viewMode === 'list' ? LIST_ITEM_HEIGHT : CARD_ITEM_HEIGHT;
   const totalHeight = matchedAssets.length * itemHeight;
@@ -174,32 +180,35 @@ export function AdvancedSearch({
             <span className="text-gray-400 dark:text-gray-500">({matchedAssets.length})</span>
           )}
         </label>
-        {matchedAssets.length > 0 && (
-          <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-md p-0.5">
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-1 rounded transition-colors ${
-                viewMode === 'list'
-                  ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                  : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
-              }`}
-              title="List view"
-            >
-              <ListViewIcon />
-            </button>
-            <button
-              onClick={() => setViewMode('card')}
-              className={`p-1 rounded transition-colors ${
-                viewMode === 'card'
-                  ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                  : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
-              }`}
-              title="Card view"
-            >
-              <CardViewIcon />
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-1">
+          <AssetTypeFilter filter={assetTypeFilter} onChange={onAssetTypeFilterChange} />
+          {matchedAssets.length > 0 && (
+            <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-md p-0.5">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-1 rounded transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                    : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+                }`}
+                title="List view"
+              >
+                <ListViewIcon />
+              </button>
+              <button
+                onClick={() => setViewMode('card')}
+                className={`p-1 rounded transition-colors ${
+                  viewMode === 'card'
+                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                    : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+                }`}
+                title="Card view"
+              >
+                <CardViewIcon />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Selector input + Execute button */}
