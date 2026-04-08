@@ -38,13 +38,15 @@ interface GraphCanvasProps {
   onFocusHandled?: () => void;
   onNodeClick?: (nodeId: string) => void;
   onHideNode?: (nodeId: string) => void;
+  /** Node whose detail sidebar is open — keeps edges highlighted */
+  activeNodeId?: string | null;
   manifest?: ParsedManifest | null;
   airflowDagMap?: AirflowDagMap | null;
   showDagGroups?: boolean;
   edgeAnimations?: boolean;
 }
 
-function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel, focusNodeId, onFocusHandled, onNodeClick, onHideNode, manifest, airflowDagMap, showDagGroups, edgeAnimations = true }: GraphCanvasProps) {
+function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel, focusNodeId, onFocusHandled, onNodeClick, onHideNode, activeNodeId, manifest, airflowDagMap, showDagGroups, edgeAnimations = true }: GraphCanvasProps) {
   // All nodes (model/source + dagGroup containers) live in one state.
   // DagGroup nodes are recomputed from model positions on every position change
   // so containers follow dragged nodes in real-time.
@@ -100,15 +102,16 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
     setEdges(inputEdges);
   }, [inputEdges, setEdges]);
 
-  // Compute styled edges: highlight connected edges on hover, dim the rest.
+  // Compute styled edges: highlight connected edges on hover (or active detail node), dim the rest.
   // edgeAnimations controls only the flowing dash animation and glow filter;
   // the blue highlight + dimming of other edges is always active.
+  const highlightNodeId = hoveredNodeId || activeNodeId;
   const styledEdges = useMemo(() => {
-    if (!hoveredNodeId) return edges;
+    if (!highlightNodeId) return edges;
 
     return edges.map((edge) => {
       const isConnected =
-        edge.source === hoveredNodeId || edge.target === hoveredNodeId;
+        edge.source === highlightNodeId || edge.target === highlightNodeId;
 
       if (isConnected) {
         return {
@@ -150,7 +153,7 @@ function GraphCanvasInner({ nodes: inputNodes, edges: inputEdges, selectedModel,
         },
       };
     });
-  }, [edges, hoveredNodeId, edgeAnimations]);
+  }, [edges, highlightNodeId, edgeAnimations]);
 
   // Custom onNodesChange handler:
   // - When a dagGroup container is dragged, move all its member nodes by the same delta

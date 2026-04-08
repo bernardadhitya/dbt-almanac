@@ -618,6 +618,7 @@ export default function App() {
                   focusNodeId={focusNodeId}
                   onFocusHandled={() => setFocusNodeId(null)}
                   onHideNode={handleHideNode}
+                  activeNodeId={detailNodeId}
                   onNodeClick={(nodeId) => {
                     // If detail sidebar is already open, always update it
                     if (detailNodeId) {
