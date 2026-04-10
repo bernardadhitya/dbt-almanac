@@ -1,4 +1,4 @@
-name: Release macOS
+name: Release
 
 on:
   workflow_dispatch:
@@ -12,7 +12,10 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  # ─────────────────────────────────────────────────
+  # macOS — arm64 and x64
+  # ─────────────────────────────────────────────────
+  build-macos:
     strategy:
       matrix:
         include:
@@ -80,25 +83,180 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.arch }}
+          name: build-macos-${{ matrix.arch }}
           path: |
             release/*.dmg
             release/*.zip
 
-  release:
-    needs: build
+  # ─────────────────────────────────────────────────
+  # Windows — x64
+  # ─────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Stamp version in package.json
+        run: npm version ${{ inputs.version }} --no-git-tag-version
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Compile Python scripts
+        shell: cmd
+        run: |
+          set WORK=.pyinstaller-work
+          set DIST=.pyinstaller-dist
+          if exist "%WORK%" rmdir /s /q "%WORK%"
+          if exist "%DIST%" rmdir /s /q "%DIST%"
+          mkdir "%WORK%" "%DIST%" build\scripts
+
+          python -m PyInstaller ^
+            --onefile --clean --name parse_manifest ^
+            --distpath "%DIST%" --workpath "%WORK%\parse_manifest" ^
+            --specpath "%WORK%" --log-level WARN ^
+            scripts\parse_manifest.py
+
+          python -m PyInstaller ^
+            --onefile --clean --name scan_airflow_dags ^
+            --paths scripts --hidden-import dbt_select ^
+            --distpath "%DIST%" --workpath "%WORK%\scan_airflow_dags" ^
+            --specpath "%WORK%" --log-level WARN ^
+            scripts\scan_airflow_dags.py
+
+          copy "%DIST%\parse_manifest.exe" build\scripts\
+          copy "%DIST%\scan_airflow_dags.exe" build\scripts\
+          rmdir /s /q "%WORK%" "%DIST%"
+
+      - name: Build frontend and Electron
+        run: npm run build
+
+      - name: Package Windows app
+        run: npx electron-builder --win --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-windows-x64
+          path: |
+            release/*.exe
+            release/*.zip
+
+  # ─────────────────────────────────────────────────
+  # Linux — x64
+  # ─────────────────────────────────────────────────
+  build-linux:
     runs-on: ubuntu-latest
     steps:
-      - name: Download arm64 artifacts
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Stamp version in package.json
+        run: npm version ${{ inputs.version }} --no-git-tag-version
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Compile Python scripts
+        run: |
+          WORK=".pyinstaller-work"
+          DIST=".pyinstaller-dist"
+          rm -rf "$WORK" "$DIST"
+          mkdir -p "$WORK" "$DIST" build/scripts
+
+          python3 -m PyInstaller \
+            --onefile --clean --name parse_manifest \
+            --distpath "$DIST" --workpath "$WORK/parse_manifest" \
+            --specpath "$WORK" --log-level WARN \
+            scripts/parse_manifest.py
+
+          python3 -m PyInstaller \
+            --onefile --clean --name scan_airflow_dags \
+            --paths scripts --hidden-import dbt_select \
+            --distpath "$DIST" --workpath "$WORK/scan_airflow_dags" \
+            --specpath "$WORK" --log-level WARN \
+            scripts/scan_airflow_dags.py
+
+          cp "$DIST/parse_manifest" build/scripts/
+          cp "$DIST/scan_airflow_dags" build/scripts/
+          rm -rf "$WORK" "$DIST"
+
+      - name: Build frontend and Electron
+        run: npm run build
+
+      - name: Package Linux app
+        run: npx electron-builder --linux --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-linux-x64
+          path: |
+            release/*.AppImage
+            release/*.deb
+
+  # ─────────────────────────────────────────────────
+  # Create GitHub Release with all platform artifacts
+  # ─────────────────────────────────────────────────
+  release:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download macOS arm64 artifacts
         uses: actions/download-artifact@v4
         with:
-          name: build-arm64
+          name: build-macos-arm64
           path: artifacts/
 
-      - name: Download x64 artifacts
+      - name: Download macOS x64 artifacts
         uses: actions/download-artifact@v4
         with:
-          name: build-x64
+          name: build-macos-x64
+          path: artifacts/
+
+      - name: Download Windows x64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-windows-x64
+          path: artifacts/
+
+      - name: Download Linux x64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-linux-x64
           path: artifacts/
 
       - name: Create GitHub Release

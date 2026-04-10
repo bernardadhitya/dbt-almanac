@@ -7,7 +7,9 @@
     "dev": "node scripts/dev.js",
     "build": "vite build && tsc -p tsconfig.electron.json",
     "electron:build": "vite build && tsc -p tsconfig.electron.json && electron-builder",
-    "dist:mac": "bash scripts/build-macos.sh"
+    "dist:mac": "bash scripts/build-macos.sh",
+    "dist:win": "scripts\\build-windows.bat",
+    "dist:linux": "bash scripts/build-linux.sh"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.4",

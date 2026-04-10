@@ -34,7 +34,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     title: 'Almanac',
   });
 
@@ -105,7 +105,8 @@ function cleanupUpdateArtifacts() {
 function spawnScript(scriptName: string, args: string[]) {
   const baseName = scriptName.replace(/\.py$/, '');
   if (app.isPackaged) {
-    const binaryPath = path.join(process.resourcesPath, 'scripts', baseName);
+    const ext = process.platform === 'win32' ? '.exe' : '';
+    const binaryPath = path.join(process.resourcesPath, 'scripts', baseName + ext);
     return spawn(binaryPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   }
   const scriptPath = path.join(__dirname, '..', 'scripts', scriptName);
@@ -397,14 +398,38 @@ ipcMain.handle('check-for-update', async () => {
       return { available: false };
     }
 
-    // Find the macOS .zip asset matching the current architecture (arm64 or x64)
-    const arch = process.arch; // "arm64" on Apple Silicon, "x64" on Intel
-    const zipAsset = (release.assets || []).find((a: any) =>
-      a.name.endsWith('.zip') && a.name.includes(arch)
-    );
+    // Find the platform-appropriate asset
+    // macOS: .zip matching current arch (arm64 / x64)
+    // Windows: .zip matching x64 (for manual-style install; auto-update not yet supported)
+    // Linux: no auto-update — direct users to the release page
+    const arch = process.arch; // "arm64" on Apple Silicon, "x64" elsewhere
+    let zipAsset: any = null;
+    if (process.platform === 'darwin') {
+      zipAsset = (release.assets || []).find((a: any) =>
+        a.name.endsWith('.zip') && a.name.includes('mac') && a.name.includes(arch)
+      );
+    } else if (process.platform === 'win32') {
+      zipAsset = (release.assets || []).find((a: any) =>
+        a.name.endsWith('.zip') && a.name.includes('win')
+      );
+    }
+    // Linux: no in-app updater — fall through with zipAsset === null
 
     if (!zipAsset) {
-      return { available: false, error: 'No macOS build found in the latest release.' };
+      if (process.platform === 'linux') {
+        // Surface the update notification but tell the UI to open the browser
+        return {
+          available: true,
+          info: {
+            version: remoteVersion,
+            releaseNotes: release.body || '',
+            downloadUrl: '',
+            htmlUrl: release.html_url,
+          },
+          manualOnly: true,
+        };
+      }
+      return { available: false, error: 'No compatible build found in the latest release.' };
     }
 
     const info = {
@@ -573,6 +598,17 @@ ipcMain.handle('save-tests-template', async () => {
 });
 
 ipcMain.handle('install-update', async () => {
+  // Windows and Linux do not have an in-app installer yet.
+  // Return a manual-download prompt so the UI can open the release page.
+  if (process.platform !== 'darwin') {
+    return {
+      success: false,
+      needsManual: true,
+      htmlUrl: pendingUpdate?.htmlUrl,
+      error: 'In-app installation is only supported on macOS. Please download the installer from the release page.',
+    };
+  }
+
   if (!downloadedUpdatePath || !fs.existsSync(downloadedUpdatePath)) {
     return { success: false, error: 'No downloaded update found. Please download first.' };
   }
