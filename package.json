@@ -2,6 +2,10 @@
   "name": "almanac",
   "version": "0.0.1",
   "description": "dbt Dependency Map Viewer",
+  "author": {
+    "name": "bernardadhitya",
+    "email": "noreply@almanac.app"
+  },
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "node scripts/dev.js",
