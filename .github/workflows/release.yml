@@ -1,3 +1,7 @@
+# Release the app. Bump `version` in package.json and package-lock.json
+# on the default branch (PR or commit) first, then run this workflow.
+# The tag and release name are taken from package.json (single source of truth).
+
 name: Release
 
 on:
@@ -15,10 +19,31 @@ permissions:
   contents: write
 
 jobs:
+  # Read the version to tag the release; package.json is already bumped on main.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      app_version: ${{ steps.read.outputs.app_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.2
+
+      - name: Read version from package.json
+        id: read
+        run: |
+          set -euo pipefail
+          V=$(node -p "require('./package.json').version")
+          if [ -z "$V" ]; then
+            echo "package.json 'version' is empty"
+            exit 1
+          fi
+          echo "app_version=$V" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$V (from package.json on this ref)"
   # ─────────────────────────────────────────────────
   # macOS — arm64 and x64
   # ─────────────────────────────────────────────────
   build-macos:
+    needs: version
     strategy:
       matrix:
         include:
@@ -96,6 +121,7 @@ jobs:
   # Windows — x64
   # ─────────────────────────────────────────────────
   build-windows:
+    needs: version
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -167,6 +193,7 @@ jobs:
   # Linux — x64
   # ─────────────────────────────────────────────────
   build-linux:
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -236,8 +263,7 @@ jobs:
   # Create GitHub Release with all platform artifacts
   # ─────────────────────────────────────────────────
   release:
-    if: github.event_name == 'workflow_dispatch'
-    needs: [build-macos, build-windows, build-linux]
+    needs: [version, build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     steps:
       - name: Download macOS arm64 artifacts
@@ -267,7 +293,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3.0.0
         with:
-          tag_name: v${{ inputs.version }}
-          name: Almanac v${{ inputs.version }}
+          tag_name: v${{ needs.version.outputs.app_version }}
+          name: Almanac v${{ needs.version.outputs.app_version }}
           generate_release_notes: true
           files: artifacts/**/*
