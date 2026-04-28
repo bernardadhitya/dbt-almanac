@@ -18,6 +18,18 @@ const store = new Store({
   },
 });
 
+type AppSettings = {
+  projectPath: string;
+  airflowDagsPath: string;
+  edgeAnimations: boolean;
+  autoUpdate: boolean;
+};
+
+const settingsStore = store as unknown as {
+  get<K extends keyof AppSettings>(key: K): AppSettings[K];
+  set<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void;
+};
+
 let mainWindow: BrowserWindow | null = null;
 
 // Cached update info so download/install can reference it
@@ -357,18 +369,18 @@ ipcMain.handle('scan-airflow-dags', async (_event, dagsPath: string, projectPath
 
 ipcMain.handle('get-settings', () => {
   return {
-    projectPath: store.get('projectPath'),
-    airflowDagsPath: store.get('airflowDagsPath'),
-    edgeAnimations: store.get('edgeAnimations'),
-    autoUpdate: store.get('autoUpdate'),
+    projectPath: settingsStore.get('projectPath'),
+    airflowDagsPath: settingsStore.get('airflowDagsPath'),
+    edgeAnimations: settingsStore.get('edgeAnimations'),
+    autoUpdate: settingsStore.get('autoUpdate'),
   };
 });
 
 ipcMain.handle('set-settings', (_event, settings: { projectPath?: string; airflowDagsPath?: string; edgeAnimations?: boolean; autoUpdate?: boolean }) => {
-  if (settings.projectPath !== undefined) store.set('projectPath', settings.projectPath);
-  if (settings.airflowDagsPath !== undefined) store.set('airflowDagsPath', settings.airflowDagsPath);
-  if (settings.edgeAnimations !== undefined) store.set('edgeAnimations', settings.edgeAnimations);
-  if (settings.autoUpdate !== undefined) store.set('autoUpdate', settings.autoUpdate);
+  if (settings.projectPath !== undefined) settingsStore.set('projectPath', settings.projectPath);
+  if (settings.airflowDagsPath !== undefined) settingsStore.set('airflowDagsPath', settings.airflowDagsPath);
+  if (settings.edgeAnimations !== undefined) settingsStore.set('edgeAnimations', settings.edgeAnimations);
+  if (settings.autoUpdate !== undefined) settingsStore.set('autoUpdate', settings.autoUpdate);
   return true;
 });
 
